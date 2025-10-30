@@ -65,6 +65,18 @@ body {
     box-sizing: border-box;
     animation: spin 1s linear infinite;
 }
+
+/* ⭐️⭐️⭐️ 추가된 부분 (작은 스피너) ⭐️⭐️⭐️ */
+.spinner-small {
+    width: 16px;
+    height: 16px;
+    border-width: 2px;
+    vertical-align: middle;
+    margin-right: 8px;
+}
+/* ⭐️⭐️⭐️ 추가 완료 ⭐️⭐️⭐️ */
+
+
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
@@ -94,7 +106,9 @@ body {
     display: flex;
 }
 
+/* ⭐️ print:hidden 클래스 추가 */
 @media print {
+    .print\:hidden { display: none !important; }
     body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     body, .container, #page5, #printable-area { margin: 0; padding: 0; }
     .card { box-shadow: none; border: 1px solid #eee; margin-bottom: 20px; padding: 16px; }

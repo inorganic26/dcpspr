@@ -2,8 +2,6 @@ import Chart from 'chart.js/auto';
 
 // --- HTML 생성 및 차트 렌더링 헬퍼 ---
 
-// 이 함수들은 App.jsx에서 state(selectedClass, testData 등)를 받아야 합니다.
-
 function getDifficulty(qNum, selectedClass) {
     if (!selectedClass) return '정보 없음';
     if (selectedClass.includes('고1')) {
@@ -17,7 +15,20 @@ function getDifficulty(qNum, selectedClass) {
     }
 }
 
-export function generateOverallFeaturesHTML(data, aiOverallAnalysis = null) {
+// "AI 분석 대기 중..." 텍스트를 생성하는 헬퍼 함수
+const getAnalysisText = (analysisData, field) => {
+    if (analysisData === undefined) { 
+        return '<div class="spinner spinner-small" role="status"></div><span class="ml-2">AI 분석 대기 중...</span>';
+    }
+    if (analysisData === null) {
+        return '<span class="text-red-600">AI 분석 실패</span>';
+    }
+    const content = analysisData[field];
+    if (typeof content === 'string') return content.replace(/\n/g, '<br>');
+    return 'AI 분석 정보 없음';
+};
+
+export function generateOverallFeaturesHTML(data, aiOverallAnalysis) {
     if (!data || !data.studentData || !Array.isArray(data.studentData.students) || !Array.isArray(data.studentData.answerRates)) {
         console.error("Invalid data structure for generateOverallFeaturesHTML", data);
         return '<div class="card p-8 printable-section"><h3 class="section-title">💡 반 전체 주요 특징</h3><p class="text-center text-red-500">리포트 특징을 표시할 데이터가 부족하거나 형식이 올바르지 않습니다.</p></div>';
@@ -42,10 +53,14 @@ export function generateOverallFeaturesHTML(data, aiOverallAnalysis = null) {
     if (highErrorRateQuestions.length > 0) {
         highErrorContent = highErrorRateQuestions.map(q => {
             const aiAnalysisForQuestion = aiOverallAnalysis?.question_analysis?.find(item => item.qNum === q.qNum);
-            const analysisComment = aiAnalysisForQuestion?.analysis_point || 'AI 분석 대기 중...';
+            
+            const analysisComment = (aiOverallAnalysis === undefined) ? 
+                getAnalysisText(undefined, '') : 
+                (aiAnalysisForQuestion?.analysis_point || 'AI 분석 정보 없음');
+            
             return `<div class="mt-2">
                         <p class="text-red-700 font-semibold">${q.qNum}번 (정답률 ${q.rate}%)</p>
-                        <p class="text-xs text-gray-600 ml-2">- AI 코멘트: ${analysisComment}</p>
+                        <p class="text-xs text-gray-600 ml-2 flex items-center">- AI 코멘트: ${analysisComment}</p>
                     </div>`;
         }).join('');
     } else {
@@ -73,13 +88,10 @@ export function generateOverallFeaturesHTML(data, aiOverallAnalysis = null) {
 }
 
 export function generateOverallReportHTML(data, aiAnalysis, selectedClass, selectedDate) {
-    const formatAIResponse = (content) => {
-        if (typeof content === 'string') return content.replace(/\n/g, '<br>');
-        return 'AI 분석 결과가 없거나 형식이 올바르지 않습니다.';
-    };
-    const summaryContent = aiAnalysis === undefined ? '<div class="spinner"></div>' : formatAIResponse(aiAnalysis?.summary);
-    const weaknessesContent = aiAnalysis === undefined ? '<div class="spinner"></div>' : formatAIResponse(aiAnalysis?.common_weaknesses);
-    const recommendationsContent = aiAnalysis === undefined ? '<div class="spinner"></div>' : formatAIResponse(aiAnalysis?.recommendations);
+    const summaryContent = getAnalysisText(aiAnalysis, 'summary');
+    const weaknessesContent = getAnalysisText(aiAnalysis, 'common_weaknesses');
+    const recommendationsContent = getAnalysisText(aiAnalysis, 'recommendations');
+
     const questionAnalysisRows = aiAnalysis?.question_analysis?.length > 0
         ? aiAnalysis.question_analysis.map(item => `
             <tr class="border-b bg-red-50">
@@ -89,48 +101,57 @@ export function generateOverallReportHTML(data, aiAnalysis, selectedClass, selec
                 <td class="px-6 py-3">${item.solution || '분석 중...'}</td>
             </tr>
         `).join('')
+        : aiAnalysis === undefined ? `<tr><td colspan="4" class="text-center py-4 flex items-center justify-center">${getAnalysisText(undefined, '')}</td></tr>`
         : aiAnalysis === null ? '<tr><td colspan="4" class="text-center py-4 text-red-500">AI 분석 실패</td></tr>'
         : '<tr><td colspan="4" class="text-center py-4">주요 오답 문항이 없습니다.</td></tr>';
+        
     return `
         <div id="printable-area">
-            <div class="text-center my-4">
-                <h2 class="text-2xl font-bold">${selectedClass} ${selectedDate} 주간테스트 리포트 (반 전체)</h2>
-            </div>
-            ${generateOverallFeaturesHTML(data, aiAnalysis)}
-            <div id="pdf-section-ai-overall" class="card p-8 printable-section">
-                <h3 class="section-title">🤖 반 전체 AI 종합 분석</h3>
-                <div class="w-full mb-8"><canvas id="scoreChart"></canvas></div>
-                <div class="space-y-6">
-                    <div class="p-6 rounded-lg bg-gray-100 border border-gray-200">
-                        <h4 class="font-bold text-lg text-gray-800 mb-2">📊 종합 총평</h4>
-                        <div class="text-gray-700">${summaryContent}</div>
-                    </div>
-                    <div class="p-6 rounded-lg bg-red-50 border-red-200">
-                        <h4 class="font-bold text-lg text-red-800 mb-2">⚠️ 공통 약점 분석</h4>
-                        <div class="text-red-700">${weaknessesContent}</div>
-                    </div>
-                    <div class="p-6 rounded-lg bg-green-50 border-green-200">
-                        <h4 class="font-bold text-lg text-green-800 mb-2">🚀 수업 지도 방안</h4>
-                        <div class="text-green-700">${recommendationsContent}</div>
+            <div class="report-page active" data-page-name="종합 분석">
+                <div class="text-center my-4 print:hidden">
+                    <h2 class="text-2xl font-bold">${selectedClass} ${selectedDate} 주간테스트 리포트 (반 전체)</h2>
+                </div>
+                ${generateOverallFeaturesHTML(data, aiAnalysis)}
+                <div id="pdf-section-ai-overall" class="card p-8 printable-section">
+                    <h3 class="section-title">🤖 반 전체 AI 종합 분석</h3>
+                    <div class="w-full mb-8"><canvas id="scoreChart"></canvas></div>
+                    <div class="space-y-6">
+                        <div class="p-6 rounded-lg bg-gray-100 border border-gray-200">
+                            <h4 class="font-bold text-lg text-gray-800 mb-2">📊 종합 총평</h4>
+                            <div class="text-gray-700 flex items-center">${summaryContent}</div>
+                        </div>
+                        <div class="p-6 rounded-lg bg-red-50 border-red-200">
+                            <h4 class="font-bold text-lg text-red-800 mb-2">⚠️ 공통 약점 분석</h4>
+                            <div class="text-red-700 flex items-center">${weaknessesContent}</div>
+                        </div>
+                        <div class="p-6 rounded-lg bg-green-50 border-green-200">
+                            <h4 class="font-bold text-lg text-green-800 mb-2">🚀 수업 지도 방안</h4>
+                            <div class="text-green-700 flex items-center">${recommendationsContent}</div>
+                        </div>
                     </div>
                 </div>
             </div>
-            <div id="pdf-section-solutions-overall" class="card p-8 printable-section">
-                <h3 class="section-title">🔍 주요 오답 문항 분석 (AI 기반)</h3>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm text-left text-gray-500">
-                        <thead class="text-xs text-gray-700 uppercase bg-gray-50">
-                            <tr>
-                                <th class="px-4 py-3 text-center">문항번호</th>
-                                <th class="px-6 py-3">세부 개념 유형 (AI 분석)</th>
-                                <th class="px-6 py-3">핵심 분석</th>
-                                <th class="px-6 py-3">지도 방안</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${questionAnalysisRows}
-                        </tbody>
-                    </table>
+            <div class="report-page" data-page-name="주요 오답 문항 분석">
+                 <div class="text-center my-4 print:hidden">
+                    <h2 class="text-2xl font-bold">${selectedClass} ${selectedDate} 주간테스트 리포트 (반 전체)</h2>
+                </div>
+                <div id="pdf-section-solutions-overall" class="card p-8 printable-section">
+                    <h3 class="section-title">🔍 주요 오답 문항 분석 (AI 기반)</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left text-gray-500">
+                            <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+                                <tr>
+                                    <th class="px-4 py-3 text-center">문항번호</th>
+                                    <th class="px-6 py-3">세부 개념 유형 (AI 분석)</th>
+                                    <th class="px-6 py-3">핵심 분석</th>
+                                    <th class="px-6 py-3">지도 방안</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${questionAnalysisRows}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
@@ -141,17 +162,19 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
     if (!student) return '<p>학생 데이터 오류</p>';
     if (!student.submitted) {
         return `
-            <div class="text-center my-4"> <h2 class="text-2xl font-bold">${selectedClass} ${selectedDate} 주간테스트 리포트</h2> </div>
-            <div class="card p-8 text-center"> <h3 class="section-title">${student.name} 학생 리포트</h3> <p class="text-xl text-gray-600 p-8">해당 시험에 응시하지 않아 리포트를 생성할 수 없습니다.</p> </div>
+            <div id="printable-area">
+                <div class="report-page active">
+                    <div class="text-center my-4"> <h2 class="text-2xl font-bold">${selectedClass} ${selectedDate} 주간테스트 리포트</h2> </div>
+                    <div class="card p-8 text-center"> <h3 class="section-title">${student.name} 학생 리포트</h3> <p class="text-xl text-gray-600 p-8">해당 시험에 응시하지 않아 리포트를 생성할 수 없습니다.</p> </div>
+                </div>
+            </div>
         `;
     }
-    const formatAIResponse = (content) => {
-        if (typeof content === 'string') return content.replace(/\n/g, '<br>');
-        return 'AI 분석 결과가 없거나 형식이 올바르지 않습니다.';
-    };
-    const strengthsContent = aiAnalysis === undefined ? '<div class="spinner"></div>' : formatAIResponse(aiAnalysis?.strengths);
-    const weaknessesContent = aiAnalysis === undefined ? '<div class="spinner"></div>' : formatAIResponse(aiAnalysis?.weaknesses);
-    const recommendationsContent = aiAnalysis === undefined ? '<div class="spinner"></div>' : formatAIResponse(aiAnalysis?.recommendations);
+
+    const strengthsContent = getAnalysisText(aiAnalysis, 'strengths');
+    const weaknessesContent = getAnalysisText(aiAnalysis, 'weaknesses');
+    const recommendationsContent = getAnalysisText(aiAnalysis, 'recommendations');
+    
     const unitMap = new Map();
     if (data?.questionUnitMap?.question_units) {
         data.questionUnitMap.question_units.forEach(item => unitMap.set(item.qNum, item.unit));
@@ -159,6 +182,7 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
     if (aiAnalysis?.incorrect_analysis) {
         aiAnalysis.incorrect_analysis.forEach(item => { if (item.unit) unitMap.set(item.qNum, item.unit); });
     }
+    
     const incorrectAnalysisRows = Array.isArray(aiAnalysis?.incorrect_analysis) && aiAnalysis.incorrect_analysis.length > 0
         ? aiAnalysis.incorrect_analysis.map(item => `
             <tr class="border-b bg-red-50">
@@ -169,30 +193,105 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
                 <td class="px-6 py-3">${item.solution || 'AI 분석 중...'}</td>
             </tr>
         `).join('')
+        : aiAnalysis === undefined ? `<tr><td colspan="5" class="text-center py-4 flex items-center justify-center">${getAnalysisText(undefined, '')}</td></tr>`
         : aiAnalysis === null ? '<tr><td colspan="5" class="text-center py-4 text-red-500">AI 분석 실패</td></tr>'
         : '<tr><td colspan="5" class="text-center py-4">오답 문항이 없습니다!</td></tr>';
+
+    // ⭐️ 주석 제거 및 PDF 1페이지 레이아웃 통합
     return `
         <div id="printable-area">
             <div class="report-page active" data-page-name="종합 분석">
-                 <div class="text-center my-4"> <h2 class="text-2xl font-bold">${selectedClass} ${selectedDate} 주간테스트 리포트</h2> </div>
+                 <div class="text-center my-4 pt-4"> 
+                     <p class="text-3xl font-bold text-gray-800">${selectedDate} Weekly Test</p>
+                     <h2 class="text-xl text-gray-600 mt-2">${selectedClass} / ${student.name}</h2>
+                 </div>
+                
                 ${generateOverallFeaturesHTML(data, aiOverallAnalysis)}
-                <div id="pdf-section-comment" class="card p-8 printable-section"> <h3 class="section-title">👨‍🏫 담당 강사 코멘트</h3> <div class="p-6 rounded-lg bg-sky-50 border-sky-200"> <textarea id="instructorComment" class="w-full h-40 p-2 border border-sky-300 rounded-lg focus:ring-2 focus:ring-sky-400 focus:outline-none" placeholder="강사님의 코멘트를 직접 입력해주세요..."></textarea> </div> </div>
-                <div id="pdf-section-ai" class="card p-8 printable-section"> <h3 class="section-title">🤖 ${student.name} 학생 AI 종합 분석</h3> <div class="w-full mb-8"><canvas id="scoreChart"></canvas></div> <div class="space-y-6"> <div class="p-6 rounded-lg bg-blue-50 border border-blue-200"> <h4 class="font-bold text-lg text-blue-800 mb-2">⭐ 강점 (Strengths)</h4> <div class="text-blue-700">${strengthsContent}</div> </div> <div class="p-6 rounded-lg bg-red-50 border-red-200"> <h4 class="font-bold text-lg text-red-800 mb-2">⚠️ 약점 (Weaknesses)</h4> <div class="text-red-700">${weaknessesContent}</div> </div> <div class="p-6 rounded-lg bg-green-50 border-green-200"> <h4 class="font-bold text-lg text-green-800 mb-2">🚀 학습 추천 (Recommendations)</h4> <div class="text-green-700">${recommendationsContent}</div> </div> </div> </div>
+                
+                <div id="pdf-section-comment" class="card p-8 printable-section mt-6"> 
+                    <h3 class="section-title">👨‍🏫 담당 강사 코멘트</h3> 
+                    <div class="p-6 rounded-lg bg-sky-50 border-sky-200"> 
+                        <textarea id="instructorComment" class="w-full h-40 p-2 border border-sky-300 rounded-lg focus:ring-2 focus:ring-sky-400 focus:outline-none print:hidden" placeholder="강사님의 코멘트를 직접 입력해주세요..."></textarea> 
+                    </div> 
+                </div>
+                
+                <div id="pdf-section-ai" class="card p-8 printable-section mt-6"> 
+                    <h3 class="section-title">🤖 ${student.name} 학생 AI 종합 분석</h3> 
+                    <div class="w-full mb-8"><canvas id="scoreChart"></canvas></div> 
+                    <div class="space-y-6"> 
+                        <div class="p-6 rounded-lg bg-blue-50 border border-blue-200"> 
+                            <h4 class="font-bold text-lg text-blue-800 mb-2">⭐ 강점 (Strengths)</h4> 
+                            <div class="text-blue-700 flex items-center">${strengthsContent}</div> 
+                        </div> 
+                        <div class="p-6 rounded-lg bg-red-50 border-red-200"> 
+                            <h4 class="font-bold text-lg text-red-800 mb-2">⚠️ 약점 (Weaknesses)</h4> 
+                            <div class="text-red-700 flex items-center">${weaknessesContent}</div> 
+                        </div> 
+                        <div class="p-6 rounded-lg bg-green-50 border-green-200"> 
+                            <h4 class="font-bold text-lg text-green-800 mb-2">🚀 학습 추천 (Recommendations)</h4> 
+                            <div class="text-green-700 flex items-center">${recommendationsContent}</div> 
+                        </div> 
+                    </div> 
+                </div>
             </div>
+
             <div class="report-page" data-page-name="문항 정오표">
-                 <div class="text-center my-4"> <h2 class="text-2xl font-bold">${selectedClass} ${selectedDate} 주간테스트 리포트</h2> </div>
-                <div id="pdf-section-errata" class="card p-8 printable-section"> <h3 class="section-title">📋 문항 정오표</h3> <div class="overflow-x-auto"> <table class="w-full text-sm text-left text-gray-500"> <thead class="text-xs text-gray-700 uppercase bg-gray-50"> <tr> <th class="px-4 py-3 text-center">문항번호</th> <th class="px-6 py-3">세부 개념 유형 (AI 분석)</th> <th class="px-4 py-3 text-center">난이도</th> <th class="px-4 py-3 text-center">정오</th> <th class="px-4 py-3 text-center">반 전체 정답률(%)</th> </tr> </thead> <tbody> ${student.answers && Array.isArray(student.answers) ? student.answers.map((ans, i) => `<tr class="border-b ${!ans.isCorrect ? 'bg-red-50' : (i % 2 === 0 ? 'bg-white' : '')}"><td class="px-4 py-3 text-center font-medium ${!ans.isCorrect ? 'text-red-600' : ''}">${ans.qNum}번</td><td class="px-6 py-3">${(data?.questionUnitMap?.question_units.find(item => item.qNum === ans.qNum) || {}).unit || ''}</td><td class="px-4 py-3 text-center">${getDifficulty(ans.qNum, selectedClass)}</td><td class="px-4 py-3 text-center font-bold ${ans.isCorrect ? 'text-blue-600' : 'text-red-600'}">${ans.isCorrect ? 'O' : 'X'}</td><td class="px-4 py-3 text-center">${data.studentData?.answerRates?.[i] ?? 'N/A'}%</td></tr>`).join('') : '<tr><td colspan="5">데이터 오류</td></tr>'} </tbody> </table> </div> </div>
+                 <div class="text-center my-4 pt-4"> 
+                     <p class="text-3xl font-bold text-gray-800">${selectedDate} Weekly Test</p>
+                     <h2 class="text-xl text-gray-600 mt-2">${selectedClass} / ${student.name} (문항 정오표)</h2>
+                 </div>
+                <div id="pdf-section-errata" class="card p-8 printable-section"> 
+                    <h3 class="section-title">📋 문항 정오표</h3> 
+                    <div class="overflow-x-auto"> 
+                        <table class="w-full text-sm text-left text-gray-500"> 
+                            <thead class="text-xs text-gray-700 uppercase bg-gray-50"> 
+                                <tr> 
+                                    <th class="px-4 py-3 text-center">문항번호</th> 
+                                    <th class="px-6 py-3">세부 개념 유형 (AI 분석)</th> 
+                                    <th class="px-4 py-3 text-center">난이도</th> 
+                                    <th class="px-4 py-3 text-center">정오</th> 
+                                    <th class="px-4 py-3 text-center">반 전체 정답률(%)</th> 
+                                </tr> 
+                            </thead> 
+                            <tbody> 
+                                ${student.answers && Array.isArray(student.answers) ? student.answers.map((ans, i) => 
+                                    `<tr class="border-b ${!ans.isCorrect ? 'bg-red-50' : (i % 2 === 0 ? 'bg-white' : '')}">
+                                        <td class="px-4 py-3 text-center font-medium ${!ans.isCorrect ? 'text-red-600' : ''}">${ans.qNum}번</td>
+                                        <td class="px-6 py-3">${unitMap.get(ans.qNum) || ''}</td>
+                                        <td class="px-4 py-3 text-center">${getDifficulty(ans.qNum, selectedClass)}</td>
+                                        <td class="px-4 py-3 text-center font-bold ${ans.isCorrect ? 'text-blue-600' : 'text-red-600'}">${ans.isCorrect ? 'O' : 'X'}</td>
+                                        <td class="px-4 py-3 text-center">${data.studentData?.answerRates?.[i] ?? 'N/A'}%</td>
+                                    </tr>`
+                                ).join('') : '<tr><td colspan="5">데이터 오류</td></tr>'} 
+                            </tbody> 
+                        </table> 
+                    </div> 
+                </div>
             </div>
+
             <div class="report-page" data-page-name="오답 분석 및 대응 방안">
-                 <div class="text-center my-4"> <h2 class="text-2xl font-bold">${selectedClass} ${selectedDate} 주간테스트 리포트</h2> </div>
-                <div id="pdf-section-solutions" class="card p-8 printable-section"> <h3 class="section-title">🔍 오답 분석 및 대응 방안 (AI 기반)</h3> <div class="overflow-x-auto"> <table class="w-full text-sm text-left text-gray-500"> <thead class="text-xs text-gray-700 uppercase bg-gray-50"> <tr> <th class="px-4 py-3 text-center">문항번호</th><th class="px-6 py-3">세부 개념 유형 (AI 분석)</th><th class="px-4 py-3 text-center">난이도</th><th class="px-6 py-3">분석 포인트 (AI 분석)</th><th class="px-6 py-3">대응 방안 (AI 추천)</th> </tr> </thead> <tbody> ${incorrectAnalysisRows} </tbody> </table> </div> </div>
+                 <div class="text-center my-4 pt-4"> 
+                     <p class="text-3xl font-bold text-gray-800">${selectedDate} Weekly Test</p>
+                     <h2 class="text-xl text-gray-600 mt-2">${selectedClass} / ${student.name} (오답 분석)</h2>
+                 </div>
+                <div id="pdf-section-solutions" class="card p-8 printable-section"> 
+                    <h3 class="section-title">🔍 오답 분석 및 대응 방안 (AI 기반)</h3> 
+                    <div class="overflow-x-auto"> 
+                        <table class="w-full text-sm text-left text-gray-500"> 
+                            <thead class="text-xs text-gray-700 uppercase bg-gray-50"> 
+                                <tr> 
+                                    <th class="px-4 py-3 text-center">문항번호</th>
+                                    <th class="px-6 py-3">세부 개념 유형 (AI 분석)</th>
+                                    <th class="px-4 py-3 text-center">난이도</th>
+                                    <th class="px-6 py-3">분석 포인트 (AI 분석)</th>
+                                    <th class="px-6 py-3">대응 방안 (AI 추천)</th> 
+                                </tr> 
+                            </thead> 
+                            <tbody> ${incorrectAnalysisRows} </tbody> 
+                        </table> 
+                    </div> 
+                </div>
             </div>
-        </div>
-        {/* 페이지네이션은 JSX에서 직접 렌더링하도록 수정 */}
-        <div id="pagination-controls" className="flex justify-center items-center space-x-4 mt-4" style={{ display: 'none' }}>
-            <button id="prevPageBtn" className="btn btn-secondary">&lt; 이전</button>
-            <span id="pageIndicator">1 / 3</span>
-            <button id="nextPageBtn" className="btn btn-secondary">다음 &gt;</button>
         </div>
     `;
 }

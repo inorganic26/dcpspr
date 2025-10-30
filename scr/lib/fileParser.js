@@ -2,57 +2,55 @@ import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import * as pdfjsLib from 'pdfjs-dist/build/pdf';
 
-// PDF.js 워커 설정 (Vite는 pdf.worker.min.mjs를 사용)
-// ⭐️ 이 코드는 fileParser.js로 이동되었습니다.
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
   import.meta.url,
 ).toString();
 
-// --- 파일 파싱 함수들 ---
-
 /**
- * 파일 이름에서 '클래스명'과 '날짜'를 기준으로 PDF와 스프레드시트 파일을 짝지어 반환합니다.
+ * ⭐️ [수정됨]
+ * 파일 이름에서 '날짜' 부분을 제거하고 '클래스명(반 이름)'을 기준으로 파일을 짝짓습니다.
  * @param {File[]} files - 사용자가 업로드한 파일 배열
- * @returns {Object} { "클래스명_날짜": { pdf: File, spreadsheet: File } }
+ * @returns {Object} { "클래스명": { pdf: File, spreadsheet: File } }
  */
 export function pairFiles(files) {
     const fileGroups = {};
-    const regex = /(.+?)\s*(\d+월\s*\d+일)/; // "클래스명 날짜" 형식 매칭
+    // 1. " 10월 30일" 또는 "_10월30일" 같은 날짜 형식을 찾습니다.
+    const dateRegex = /[\s_]*(\d+월\s*\d+일)[\s_]*/;
 
     files.forEach(file => {
-        const match = file.name.match(regex);
-        if (match) {
-            const className = match[1].trim();
-            const date = match[2].trim().replace(/\s/g, ''); // "8월 15일" -> "8월15일"
-            const key = `${className}_${date}`;
-            
-            if (!fileGroups[key]) fileGroups[key] = {};
-            
-            const extension = file.name.split('.').pop().toLowerCase();
-            if (['csv', 'xlsx'].includes(extension)) {
-                fileGroups[key].spreadsheet = file;
-            } else if (extension === 'pdf') {
-                fileGroups[key].pdf = file;
-            }
+        const extension = file.name.split('.').pop().toLowerCase();
+        if (!['pdf', 'csv', 'xlsx'].includes(extension)) return;
+
+        // 2. 파일 이름에서 날짜 부분과 확장자를 제거하여 "클래스명"을 key로 사용
+        const key = file.name.replace(dateRegex, ' ') // 날짜 부분을 공백으로 (혹시 중간에 껴있을까봐)
+                           .replace(/\.(pdf|csv|xlsx)$/i, '') // 확장자 제거
+                           .trim(); // 양쪽 공백 제거
+
+        if (!key) return; // 이름이 없으면 무시
+
+        if (!fileGroups[key]) fileGroups[key] = {};
+        
+        if (['csv', 'xlsx'].includes(extension)) {
+            fileGroups[key].spreadsheet = file;
+        } else if (extension === 'pdf') {
+            fileGroups[key].pdf = file;
         }
     });
 
     const finalPairedFiles = {};
     for (const key in fileGroups) {
-        // PDF와 스프레드시트가 모두 있는 쌍만 반환
+        // 3. PDF와 스프레드시트가 모두 있는 쌍만 반환
         if (fileGroups[key].spreadsheet && fileGroups[key].pdf) {
             finalPairedFiles[key] = fileGroups[key];
         }
     }
+    // 4. 이제 반환값은 { "고1A반": { pdf: ..., spreadsheet: ... } } 형태가 됩니다.
     return finalPairedFiles;
 }
 
-/**
- * CSV 파일을 파싱하여 JSON 객체 배열로 반환합니다.
- * @param {File} file - CSV 파일
- * @returns {Promise<Object[]>}
- */
+// ... (parseCSV, parseXLSX, parsePDF, processStudentData 함수는 기존과 동일) ...
+
 export function parseCSV(file) {
     return new Promise((resolve, reject) => {
         Papa.parse(file, {
@@ -70,11 +68,6 @@ export function parseCSV(file) {
     });
 }
 
-/**
- * XLSX (Excel) 파일을 파싱하여 JSON 객체 배열로 반환합니다.
- * @param {File} file - XLSX 파일
- * @returns {Promise<Object[]>}
- */
 export function parseXLSX(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -95,11 +88,6 @@ export function parseXLSX(file) {
     });
 }
 
-/**
- * PDF 파일의 모든 텍스트를 추출하여 하나의 문자열로 반환합니다.
- * @param {File} file - PDF 파일
- * @returns {Promise<string>}
- */
 export async function parsePDF(file) {
     const reader = new FileReader();
     return new Promise((resolve, reject) => {
@@ -127,11 +115,6 @@ export async function parsePDF(file) {
     });
 }
 
-/**
- * 파싱된 스프레드시트 데이터를 학생별 점수, 정답률, 반 평균 등으로 처리합니다.
- * @param {Object[]} spreadsheetData - parseCSV 또는 parseXLSX의 결과
- * @returns {Object}
- */
 export function processStudentData(spreadsheetData) {
     if (!spreadsheetData || spreadsheetData.length === 0) {
         return { students: [], classAverage: 0, answerRates: [], questionCount: 0 };
