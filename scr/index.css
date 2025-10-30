@@ -1,0 +1,111 @@
+/* Noto Sans KR 폰트 import */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap');
+
+body {
+    font-family: 'Noto Sans KR', sans-serif;
+}
+
+.page { display: none; }
+.page.active { display: block; animation: fadeIn 0.3s ease-out; }
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.card {
+    background-color: white;
+    border-radius: 12px;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
+    padding: 2rem;
+}
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.75rem 1.25rem;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+    border: none;
+    user-select: none;
+}
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.btn-primary {
+    background-color: #4f46e5; /* indigo-600 */
+    color: white;
+}
+.btn-primary:hover:not(:disabled) { background-color: #4338ca; }
+.btn-secondary {
+    background-color: #f3f4f6; /* gray-100 */
+    color: #374151; /* gray-700 */
+    border: 1px solid #e5e7eb; /* gray-200 */
+}
+.btn-secondary:hover:not(:disabled) { background-color: #e5e7eb; }
+.btn-sm { padding: 0.5rem 1rem; font-size: 0.875rem; }
+
+#reportSelectionButtons .btn-nav-active {
+    background-color: #dbeafe; /* blue-100 */
+    color: #1d4ed8; /* blue-700 */
+    font-weight: 700;
+    border-color: #93c5fd; /* blue-300 */
+}
+
+.spinner {
+    width: 24px;
+    height: 24px;
+    border: 3px solid #e5e7eb; /* gray-200 */
+    border-bottom-color: #4f46e5; /* indigo-600 */
+    border-radius: 50%;
+    display: inline-block;
+    box-sizing: border-box;
+    animation: spin 1s linear infinite;
+}
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.section-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #1d4ed8; /* blue-700 */
+    margin-bottom: 1.5rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid #dbeafe; /* blue-100 */
+}
+
+/* PDF 인쇄용 스타일 */
+.printable-section {
+    page-break-inside: avoid;
+}
+.report-page {
+    display: none;
+    page-break-after: always;
+}
+.report-page.active {
+    display: block;
+}
+#pagination-controls {
+    display: flex;
+}
+
+@media print {
+    body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    body, .container, #page5, #printable-area { margin: 0; padding: 0; }
+    .card { box-shadow: none; border: 1px solid #eee; margin-bottom: 20px; padding: 16px; }
+    #navigation, #navBack, #navHome, #navActions, #pagination-controls { display: none !important; }
+    main { margin-top: 0; }
+    .report-page { display: block !important; page-break-after: always; }
+    .report-page:last-child { page-break-after: avoid; }
+    /* Ensure bg colors print */
+    .bg-indigo-50, .bg-green-50, .bg-red-50, .bg-gray-100, .bg-blue-50, .bg-sky-50, .bg-gray-50 { background-color: var(--tw-bg-opacity, 1) !important; }
+    .text-indigo-800, .text-green-800, .text-red-800, .text-blue-800, .text-sky-700 { color: var(--tw-text-opacity, 1) !important; }
+    /* Ensure charts render */
+    canvas#scoreChart { display: none !important; }
+    img { max-width: 100% !important; }
+}

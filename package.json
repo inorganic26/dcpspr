@@ -9,10 +9,16 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "firebase": "^10.10.0", 
+    "chart.js": "^4.5.1",
+    "firebase": "^10.10.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^3.0.3",
     "lucide-react": "^0.368.0",
+    "papaparse": "^5.5.3",
+    "pdfjs-dist": "^5.4.296",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/react": "^18.2.66",
@@ -23,5 +29,18 @@
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.6",
     "vite": "^5.2.0"
-  }
+  },
+  "description": "",
+  "main": "vite.config.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/inorganic26/dcpspr.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/inorganic26/dcpspr/issues"
+  },
+  "homepage": "https://github.com/inorganic26/dcpspr#readme"
 }
