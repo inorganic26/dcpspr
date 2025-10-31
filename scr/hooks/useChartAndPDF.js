@@ -129,11 +129,8 @@ export const useChartAndPDF = () => {
                     windowHeight: tempContainer.scrollHeight
                 });
                 
-                // ⭐️⭐️⭐️ 변경된 부분 (JPEG -> PNG) ⭐️⭐️⭐️
-                // ⭐️ jsPDF는 PNG 데이터 URL을 안정적으로 지원합니다.
                 const imgData = canvas.toDataURL('image/png', 1.0);
                 return imgData;
-                // ⭐️⭐️⭐️ 변경 완료 ⭐️⭐️⭐️
 
             } catch (canvasError) {
                 console.error("html2canvas error:", canvasError);
@@ -165,9 +162,9 @@ export const useChartAndPDF = () => {
                 if (i > 0) pdf.addPage();
                 const xOffset = (pdfWidth - finalWidth) / 2;
                 
-                // ⭐️⭐️⭐️ 변경된 부분 (JPEG -> PNG) ⭐️⭐️⭐️
-                // ⭐️ jsPDF에 이미지 형식이 'PNG'임을 명시합니다.
-                pdf.addImage(imgData, 'PNG', xOffset, 0, finalWidth, finalHeight);
+                // ⭐️⭐️⭐️ 변경된 부분 (PNG -> png) ⭐️⭐️⭐️
+                // ⭐️ jsPDF에 이미지 형식이 'png'(소문자)임을 명시합니다.
+                pdf.addImage(imgData, 'png', xOffset, 0, finalWidth, finalHeight);
                 // ⭐️⭐️⭐️ 변경 완료 ⭐️⭐️⭐️
             }
             

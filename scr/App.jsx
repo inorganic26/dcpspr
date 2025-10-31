@@ -9,7 +9,7 @@ import { useChartAndPDF } from './hooks/useChartAndPDF';
 import { usePagination } from './hooks/usePagination';
 import { useReportNavigation } from './hooks/useReportNavigation';
 
-// 2. 아이콘 임포트
+// 2. 아이콘 임포트 (⭐️ CalendarDays 추가)
 import { Home, ArrowLeft, UploadCloud, FileText, Loader, TriangleAlert, Save, PlusCircle, CalendarDays } from 'lucide-react';
 
 // 3. 오늘 날짜를 "M월 D일" 형식으로 반환하는 헬퍼 함수
@@ -23,9 +23,11 @@ const getTodayDateString = () => {
 // --- 4. 페이지별 컴포넌트 ---
 
 const Page1_Upload = ({ authError, handleFileChange, handleFileProcess, fileInputRef, selectedFiles }) => {
-    // ⭐️⭐️⭐️ 변경된 부분 ⭐️⭐️⭐️
-    // 1. 컴포넌트 최상단에서 useReportContext 훅을 호출합니다.
-    const { processing, errorMessage, uploadDate, setUploadDate, showPage } = useReportContext();
+    // ⭐️⭐️⭐️ 변경된 부분 (Context에서 testData, setSelectedDate, setErrorMessage 가져오기) ⭐️⭐️⭐️
+    const { 
+        processing, errorMessage, uploadDate, setUploadDate, showPage, 
+        testData, setSelectedDate, setErrorMessage 
+    } = useReportContext();
     // ⭐️⭐️⭐️ 변경 완료 ⭐️⭐️⭐️
 
     // --- 날짜 변환 로직 ---
@@ -67,6 +69,34 @@ const Page1_Upload = ({ authError, handleFileChange, handleFileProcess, fileInpu
         setUploadDate(formatISOToMMDD(newIsoDate)); 
     };
     // --- 날짜 변환 로직 종료 ---
+
+    // ⭐️⭐️⭐️ 추가된 부분 (선택한 날짜로 조회하는 핸들러) ⭐️⭐️⭐️
+    const handleViewExistingByDate = () => {
+        if (!uploadDate) {
+            setErrorMessage('먼저 조회할 날짜를 선택해주세요.');
+            return;
+        }
+
+        const allDates = new Set();
+        if (testData && typeof testData === 'object') {
+            Object.values(testData).forEach(classData => {
+                if (classData && typeof classData === 'object') {
+                    Object.keys(classData).forEach(date => {
+                        allDates.add(date);
+                    });
+                }
+            });
+        }
+        
+        if (allDates.has(uploadDate)) {
+            setErrorMessage(''); // 오류 메시지 초기화
+            setSelectedDate(uploadDate);
+            showPage('page2'); // "반 선택" 페이지로 이동
+        } else {
+            setErrorMessage(`'${uploadDate}'에 해당하는 분석된 리포트가 없습니다. \n다른 날짜를 선택하거나 '모든 날짜 보기'를 클릭하세요.`);
+        }
+    };
+    // ⭐️⭐️⭐️ 추가 완료 ⭐️⭐️⭐️
 
     return (
         <div id="fileUploadCard" className="card">
@@ -122,14 +152,27 @@ const Page1_Upload = ({ authError, handleFileChange, handleFileProcess, fileInpu
                 <span>{processing ? '분석 중...' : '분석 시작하기'}</span>
             </button>
 
-            {/* ⭐️⭐️⭐️ 변경된 부분 ⭐️⭐️⭐️ */}
-            {/* 2. onClick에서 Context에서 가져온 showPage 함수를 직접 호출합니다. */}
-            <button 
-                className="btn btn-secondary w-full text-md mt-4" 
-                onClick={() => showPage('page3')}
-            >
-                기존 리포트 보기 (날짜 선택)
-            </button>
+            {/* ⭐️⭐️⭐️ 변경된 부분 (버튼 2개로 분리) ⭐️⭐️⭐️ */}
+            <div className="grid grid-cols-2 gap-4 mt-4">
+                <button 
+                    className="btn btn-primary w-full text-md" 
+                    onClick={handleViewExistingByDate}
+                    disabled={processing}
+                >
+                    <CalendarDays size={18} className="mr-2" />
+                    선택 날짜 조회
+                </button>
+                <button 
+                    className="btn btn-secondary w-full text-md" 
+                    onClick={() => {
+                        setErrorMessage(''); // 오류 메시지 초기화
+                        showPage('page3');
+                    }}
+                    disabled={processing}
+                >
+                    모든 날짜 보기
+                </button>
+            </div>
             {/* ⭐️⭐️⭐️ 변경 완료 ⭐️⭐️⭐️ */}
         </div>
     );

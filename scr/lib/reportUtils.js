@@ -197,7 +197,9 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
         : aiAnalysis === null ? '<tr><td colspan="5" class="text-center py-4 text-red-500">AI 분석 실패</td></tr>'
         : '<tr><td colspan="5" class="text-center py-4">오답 문항이 없습니다!</td></tr>';
 
-    // ⭐️ 주석 제거 및 PDF 1페이지 레이아웃 통합
+    // ⭐️⭐️⭐️ [수정된 부분] ⭐️⭐️⭐️
+    // JSX 주석 ({/* ... */})을 HTML 주석 ()으로 변경
+    // 오타 수정 (class_name -> class)
     return `
         <div id="printable-area">
             <div class="report-page active" data-page-name="종합 분석">
@@ -214,8 +216,15 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
                         <textarea id="instructorComment" class="w-full h-40 p-2 border border-sky-300 rounded-lg focus:ring-2 focus:ring-sky-400 focus:outline-none print:hidden" placeholder="강사님의 코멘트를 직접 입력해주세요..."></textarea> 
                     </div> 
                 </div>
-                
-                <div id="pdf-section-ai" class="card p-8 printable-section mt-6"> 
+            </div>
+
+            <div class="report-page" data-page-name="AI 종합 분석">
+                <div class="text-center my-4 pt-4"> 
+                     <p class="text-3xl font-bold text-gray-800">${selectedDate} Weekly Test</p>
+                     <h2 class="text-xl text-gray-600 mt-2">${selectedClass} / ${student.name} (AI 분석)</h2>
+                 </div>
+            
+                <div id="pdf-section-ai" class="card p-8 printable-section"> 
                     <h3 class="section-title">🤖 ${student.name} 학생 AI 종합 분석</h3> 
                     <div class="w-full mb-8"><canvas id="scoreChart"></canvas></div> 
                     <div class="space-y-6"> 
@@ -275,6 +284,7 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
                      <h2 class="text-xl text-gray-600 mt-2">${selectedClass} / ${student.name} (오답 분석)</h2>
                  </div>
                 <div id="pdf-section-solutions" class="card p-8 printable-section"> 
+                    {/* ⭐️ 오타 수정: class_name -> class ⭐️ */}
                     <h3 class="section-title">🔍 오답 분석 및 대응 방안 (AI 기반)</h3> 
                     <div class="overflow-x-auto"> 
                         <table class="w-full text-sm text-left text-gray-500"> 
@@ -295,6 +305,7 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
         </div>
     `;
 }
+// ⭐️⭐️⭐️ [수정 완료] ⭐️⭐️⭐️
 
 export function renderScoreChart(ctx, studentData, currentStudent) {
     if (!ctx || !studentData || !studentData.students) {
