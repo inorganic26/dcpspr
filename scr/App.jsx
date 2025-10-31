@@ -9,7 +9,7 @@ import { useChartAndPDF } from './hooks/useChartAndPDF';
 import { usePagination } from './hooks/usePagination';
 import { useReportNavigation } from './hooks/useReportNavigation';
 
-// 2. 아이콘 임포트 (⭐️ CalendarDays 추가)
+// 2. 아이콘 임포트 (⭐️ TriangleAlert를 Page1에서 App 최상단으로 이동)
 import { Home, ArrowLeft, UploadCloud, FileText, Loader, TriangleAlert, Save, PlusCircle, CalendarDays } from 'lucide-react';
 
 // 3. 오늘 날짜를 "M월 D일" 형식으로 반환하는 헬퍼 함수
@@ -136,6 +136,7 @@ const Page1_Upload = ({ authError, handleFileChange, handleFileProcess, fileInpu
                 </div>
             )}
 
+            {/* ⭐️ [수정] Page1의 오류 메시지는 전역 오류 메시지로 대체되므로, 여기서는 authError만 처리합니다. */}
             {errorMessage && (
                 <div id="error-message" className="text-red-600 bg-red-100 p-3 rounded-lg mb-4 text-sm"
                     dangerouslySetInnerHTML={{ __html: errorMessage.replace(/\n/g, '<br>') }} />
@@ -315,6 +316,8 @@ const App = () => {
     const {
         currentPage, selectedClass, selectedDate, selectedStudent,
         initialLoading, authError,
+        // ⭐️ [수정] 전역 오류 메시지 상태를 가져옵니다.
+        errorMessage, setErrorMessage
     } = useReportContext();
     
     const { saveDataToFirestore } = useFirebase();
@@ -322,7 +325,8 @@ const App = () => {
     const { goBack, goHome } = useReportNavigation();
     
     useReportGenerator({ saveDataToFirestore }); 
-    useChartAndPDF(); 
+    // ⭐️ [수정] useChartAndPDF가 handlePdfSave 함수를 반환하도록 변경
+    const { handlePdfSave } = useChartAndPDF(); 
     
     // --- 렌더링 로직 ---
     
@@ -354,6 +358,8 @@ const App = () => {
                                 data-report-type={selectedStudent ? 'individual' : 'overall'}
                                 data-student-name={selectedStudent || ''}
                                 className="btn btn-secondary btn-sm"
+                                // ⭐️ [수정] onClick 핸들러를 직접 연결합니다.
+                                onClick={handlePdfSave}
                             >
                                 <FileText size={16} className="mr-2" /> PDF로 저장
                             </button>
@@ -402,9 +408,35 @@ const App = () => {
         }
     };
 
+    // ⭐️ [추가] 전역 오류 메시지를 렌더링하는 함수
+    const renderGlobalError = () => {
+        if (!errorMessage || currentPage === 'page1') return null; // page1은 자체 오류 메시지 사용
+        
+        return (
+            <div 
+                id="global-error-message" 
+                // (토스트 팝업 스타일)
+                className="fixed bottom-4 right-4 bg-red-600 text-white p-4 rounded-lg shadow-lg z-50 max-w-sm animate-pulse"
+                style={{ animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite' }}
+            >
+                <div className="flex items-center">
+                    <TriangleAlert className="w-6 h-6 mr-3 flex-shrink-0" />
+                    <span dangerouslySetInnerHTML={{ __html: errorMessage.replace(/\n/g, '<br>') }} />
+                    <button 
+                        onClick={() => setErrorMessage('')} 
+                        className="ml-4 p-1 rounded-full hover:bg-red-700 text-2xl leading-none"
+                    >
+                        &times;
+                    </button>
+                </div>
+            </div>
+        );
+    };
+
     return (
         <div className="container mx-auto p-4 max-w-5xl">
             {renderNav()}
+            {renderGlobalError()} {/* ⭐️ [추가] 전역 오류 렌더링 */}
             <main className={currentPage !== 'page1' ? 'mt-16 pt-8' : ''}>
                 {renderPage()}
             </main>

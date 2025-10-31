@@ -1,9 +1,9 @@
 import { useEffect, useCallback } from 'react';
 import { useReportContext } from '../context/ReportContext';
 import { renderScoreChart } from '../lib/reportUtils.js';
-import html2canvas from 'html2canvas'; // ⭐️ 강사 코멘트 등 다른 요소에 여전히 필요
+import html2canvas from 'html2canvas'; // ⭐️ html2canvas fallback을 위해 임포트
 import { jsPDF } from 'jspdf';
-import 'jspdf-autotable'; // 1. jspdf-autotable 임포트
+import autoTable from 'jspdf-autotable'; // [수정됨] jspdf-autotable을 함수로 임포트
 import Chart from 'chart.js/auto';
 
 // ⭐️ 2. 폰트 데이터를 저장할 변수 (앱 실행 중 한 번만 로드)
@@ -42,22 +42,10 @@ async function getFontBase64() {
 
 /**
  * jsPDF 인스턴스를 초기화하고 한글 폰트를 설정합니다.
- * (autoTable 로딩 오류 방어 로직 강화)
  */
 async function initializePdf() {
     // jsPDF 인스턴스 생성
     const pdf = new jsPDF('p', 'mm', 'a4');
-    
-    // 💡 autoTable 로딩 오류 방어: autoTable 함수가 없으면 재로딩 시도
-    if (typeof pdf.autoTable !== 'function') {
-        try {
-            // jspdf-autotable 플러그인을 동적으로 재임포트하여 로딩을 강제함
-            // (대부분의 모듈 시스템에서 이 방식이 autoTable(jsPDF)를 대체합니다.)
-            await import('jspdf-autotable'); 
-        } catch (e) {
-            console.warn("jspdf-autotable 재로딩 시도 실패:", e);
-        }
-    }
     
     // ⭐️ 3. VFS(가상 파일 시스템)에 폰트 추가
     if (pdf.getFontList()['NotoSansKR'] === undefined) {
@@ -66,21 +54,16 @@ async function initializePdf() {
 
         try {
             pdf.addFileToVFS('NotoSansKR-Regular.ttf', fontData);
-            pdf.addFont('NotoSansKR-Regular.ttf', 'NotoSansKR', 'normal');
+            // ⭐️ [수정] (A) 'Identity-H' 유니코드 인코딩 설정
+            pdf.addFont('NotoSansKR-Regular.ttf', 'NotoSansKR', 'normal', 'Identity-H');
         } catch (e) {
             console.error("Failed to add font to jsPDF:", e);
-            // 폰트 데이터가 손상되었거나 Base64 변환에 실패한 경우
             throw new Error(`PDF 폰트 로딩 실패: ${e.message}.`);
         }
     }
     
     pdf.setFont('NotoSansKR', 'normal');
     
-    // 💡 중요: autoTable 로딩이 성공적으로 이루어졌는지 최종 확인
-    if (typeof pdf.autoTable !== 'function') {
-         throw new Error("PDF 플러그인 로딩 오류: pdf.autoTable이 정의되지 않았습니다. 패키지 설치 및 임포트 순서를 확인하세요.");
-    }
-
     return pdf;
 }
 
@@ -89,7 +72,7 @@ async function initializePdf() {
  */
 function addPdfTitle(pdf, title, subtitle) {
     pdf.setFontSize(22);
-    pdf.setFont('NotoSansKR', 'normal');
+    pdf.setFont('NotoSansKR', 'normal'); // ⭐️ 한글 깨짐 방지 (호출 시 폰트 재설정)
     pdf.setTextColor(0, 0, 0);
     pdf.text(title, 105, 20, { align: 'center' });
     if (subtitle) {
@@ -105,7 +88,7 @@ function addPdfTitle(pdf, title, subtitle) {
  */
 function addPdfSectionTitle(pdf, title, yPos) {
     pdf.setFontSize(16);
-    pdf.setFont('NotoSansKR', 'normal');
+    pdf.setFont('NotoSansKR', 'normal'); // ⭐️ 한글 깨짐 방지 (호출 시 폰트 재설정)
     pdf.setTextColor(29, 78, 216); // text-blue-700
     pdf.text(title, 15, yPos);
     
@@ -133,7 +116,7 @@ function addWrappedText(pdf, text, yPos, options = {}) {
     
     pdf.setFontSize(fontSize);
     pdf.setTextColor(color[0], color[1], color[2]);
-    pdf.setFont('NotoSansKR', 'normal');
+    pdf.setFont('NotoSansKR', 'normal'); // ⭐️ 한글 깨짐 방지 (호출 시 폰트 재설정)
     
     const lines = pdf.splitTextToSize(text || ' ', maxWidth);
     pdf.text(lines, x, yPos, { lineHeightFactor: lineSpacing });
@@ -174,22 +157,20 @@ function addFeaturesSection(pdf, data, yPos) {
         if (rate <= 40) highErrorRateQuestions.push({ qNum: i + 1, rate: rate });
     });
 
-    // 박스 너비와 간격 설정
     const boxWidth = 58;
     const boxMargin = 7.5;
     const startX = 15;
-    let boxHeight = 25; // 기본 높이
+    let boxHeight = 25; 
 
     const errorText = highErrorRateQuestions.length > 0 
         ? highErrorRateQuestions.map(q => `${q.qNum}번 (${q.rate}%)`).join(', ') 
         : '없음';
     
-    // ⭐️ pdf.splitTextToSize는 pdf 객체가 초기화되어야 사용 가능
+    pdf.setFont('NotoSansKR', 'normal'); // ⭐️ splitTextToSize 전에 폰트 설정
     const errorTextLines = pdf.splitTextToSize(errorText, boxWidth - 10);
     const errorTextHeight = (errorTextLines.length * 9 * 0.352778 * 1.6) + 18;
-    boxHeight = Math.max(boxHeight, errorTextHeight); // 오답률 박스 높이에 맞춰 모든 박스 높이 통일
+    boxHeight = Math.max(boxHeight, errorTextHeight); 
 
-    pdf.setFont('NotoSansKR', 'normal');
     pdf.setLineWidth(0.5);
 
     // 1. 점수 분포
@@ -241,7 +222,6 @@ function addAiAnalysisSection(pdf, title, content, yPos, colorTheme = 'gray') {
     };
     const theme = colors[colorTheme];
 
-    // 내용이 없으면 "AI 분석 중..." 또는 "실패" 메시지를 표시합니다.
     let displayText = content;
     if (content === undefined) {
         displayText = 'AI 분석 대기 중...';
@@ -253,14 +233,12 @@ function addAiAnalysisSection(pdf, title, content, yPos, colorTheme = 'gray') {
 
     pdf.setFont('NotoSansKR', 'normal');
     
-    // 텍스트 높이 계산
     const textLines = pdf.splitTextToSize(displayText, 170);
-    const textHeight = (textLines.length * 10 * 0.352778 * 1.6) + 12; // 1.6 line height, 12mm padding(top/bottom)
+    const textHeight = (textLines.length * 10 * 0.352778 * 1.6) + 12; 
     
-    // 페이지 넘김 확인
-    if (yPos + textHeight + 15 > 280) { // 280mm를 A4 한계로 설정 (여백 포함)
+    if (yPos + textHeight + 15 > 280) { 
         pdf.addPage();
-        yPos = 20; // 새 페이지 상단
+        yPos = 20; 
     }
     
     pdf.setDrawColor(theme.border[0], theme.border[1], theme.border[2]);
@@ -273,7 +251,7 @@ function addAiAnalysisSection(pdf, title, content, yPos, colorTheme = 'gray') {
     
     addWrappedText(pdf, displayText, yPos + 16, { x: 20, maxWidth: 170, color: theme.text });
 
-    return yPos + textHeight + 15 + 5; // 다음 섹션 Y 위치
+    return yPos + textHeight + 15 + 5; 
 }
 
 
@@ -287,7 +265,6 @@ function getDifficulty(qNum, selectedClass) {
         if (qNum >= 9) return '보통';
         return '쉬움';
     } else {
-        // 예시 PDF의 난이도 기준 적용
         if ([14, 15, 17, 18, 19, 21].includes(qNum)) return '어려움';
         if ([6, 7, 8, 9, 10, 11, 12, 13, 16, 20].includes(qNum)) return '보통';
         return '쉬움';
@@ -300,58 +277,98 @@ export const useChartAndPDF = () => {
     const { 
         currentPage, testData, selectedClass, selectedDate, 
         selectedStudent, aiLoading, reportHTML, 
-        activeChart, setActiveChart, setErrorMessage
+        activeChart, setActiveChart, setErrorMessage,
+        reportCurrentPage
     } = useReportContext();
 
     // --- 1. 차트 렌더링 Effect ---
     useEffect(() => {
         let newChart = null;
-        
-        if (currentPage === 'page5' && !aiLoading && reportHTML) {
-            const chartCanvas = document.getElementById('scoreChart');
-            const data = testData[selectedClass]?.[selectedDate];
-            
-            if (chartCanvas && data?.studentData) {
-                const existingChart = Chart.getChart(chartCanvas);
-                if (existingChart) existingChart.destroy();
+        let animFrameId1 = null; 
+        let animFrameId2 = null; 
 
-                const ctx = chartCanvas.getContext('2d');
-                if (ctx) ctx.willReadFrequently = true; 
+        const renderChart = () => {
+            // ⭐️ 2페이지일 때만 차트를 렌더링하도록 조건 강화
+            if (reportCurrentPage === 2 && !aiLoading && reportHTML) {
+                const chartCanvas = document.getElementById('scoreChart');
+                const data = testData[selectedClass]?.[selectedDate];
                 
-                const studentForChart = data.studentData.students.find(s => s.name === selectedStudent) || null;
-                newChart = renderScoreChart(chartCanvas, data.studentData, studentForChart);
-                setActiveChart(newChart);
+                if (chartCanvas && data?.studentData) {
+                    if (chartCanvas.offsetWidth > 0) { 
+                        const existingChart = Chart.getChart(chartCanvas);
+                        if (existingChart) existingChart.destroy();
+
+                        // ⭐️ [수정] (③) willReadFrequently 경고 해결
+                        const ctx = chartCanvas.getContext('2d', { willReadFrequently: true });
+                        
+                        const studentForChart = data.studentData.students.find(s => s.name === selectedStudent) || null;
+                        newChart = renderScoreChart(chartCanvas, data.studentData, studentForChart);
+                        setActiveChart(newChart);
+                    }
+                }
             }
-        }
+        };
+
+        // 이중 requestAnimationFrame (타이밍 문제 해결용)
+        animFrameId1 = requestAnimationFrame(() => {
+            animFrameId2 = requestAnimationFrame(renderChart);
+        });
         
         return () => {
+            if (animFrameId1) cancelAnimationFrame(animFrameId1);
+            if (animFrameId2) cancelAnimationFrame(animFrameId2);
             if (newChart) {
                 newChart.destroy();
                 setActiveChart(null);
             }
         };
-    }, [currentPage, aiLoading, reportHTML, selectedStudent, selectedClass, selectedDate, testData, setActiveChart]); 
+    }, [currentPage, aiLoading, reportHTML, selectedStudent, selectedClass, selectedDate, testData, setActiveChart, reportCurrentPage]); 
+    // --- 차트 렌더링 Effect 수정 완료 ---
 
     
-    // --- 2. ⭐️ PDF 저장 핸들러 (텍스트 기반으로 전면 수정) ⭐️ ---
-    const handlePdfSave = useCallback(async (e) => {
-        if (!e.target || (e.target.id !== 'savePdfBtn' && !e.target.closest('#savePdfBtn'))) {
-            return;
-        }
-        const button = e.target.id === 'savePdfBtn' ? e.target : e.target.closest('#savePdfBtn');
+    // --- 2. PDF 저장 핸들러 ---
+    const handlePdfSave = useCallback(async () => {
+        const button = document.getElementById('savePdfBtn');
         if (!button) return;
-
-        if (!activeChart && document.getElementById('scoreChart')) { 
-            setErrorMessage('차트가 렌더링되지 않아 PDF를 저장할 수 없습니다. 잠시 후 다시 시도해주세요.');
-            return;
-        }
         
         button.textContent = '저장 중...';
         button.disabled = true;
+        
+        // ⭐️ [사용자 요청 ②] 차트 강제 렌더링 로직
+        let currentActiveChart = activeChart;
+        let needsChartRendering = false;
+        
+        // 1. 1페이지 등에서 PDF 저장을 눌러 activeChart가 비어있는 경우
+        if (!currentActiveChart) {
+            const chartCanvas = document.getElementById('scoreChart');
+            const data = testData[selectedClass]?.[selectedDate];
+            if (chartCanvas && data?.studentData) {
+                needsChartRendering = true;
+                button.textContent = '차트 준비 중...'; // ⭐️ 사용자 피드백
+                console.warn('PDF 저장 전 차트 강제 렌더링 실행 (activeChart is null)');
+                
+                const existingChart = Chart.getChart(chartCanvas);
+                if (existingChart) existingChart.destroy();
+                
+                // ⭐️ [수정] (③) willReadFrequently 경고 해결
+                const ctx = chartCanvas.getContext('2d', { willReadFrequently: true });
+                
+                const studentForChart = data.studentData.students.find(s => s.name === selectedStudent) || null;
+                const newChart = renderScoreChart(chartCanvas, data.studentData, studentForChart);
+                
+                currentActiveChart = newChart; // 로컬 변수에 할당
+                setActiveChart(newChart); // Context에도 반영
+                
+                await new Promise(resolve => setTimeout(resolve, 300)); // ⭐️ 렌더링 안정화 대기 (300ms)
+            }
+        }
+        // --- ⭐️ 강제 렌더링 종료 ⭐️ ---
+        
+        // 렌더링 후 버튼 텍스트 원복 (저장 중...)
+        button.textContent = '저장 중...';
 
         let pdf;
         try {
-             // ⭐️ 한글 폰트가 설정된 PDF 객체 생성 (비동기)
              pdf = await initializePdf();
         } catch (fontError) {
              console.error(fontError);
@@ -374,42 +391,50 @@ export const useChartAndPDF = () => {
             const aiOverall = data.aiOverallAnalysis;
             const aiStudent = student?.aiAnalysis;
             
-            // 텍스트 줄바꿈 헬퍼
-            const cleanText = (text) => text === undefined || text === null ? ' ' : String(text).replace(/\n/g, ' '); // 테이블 내 줄바꿈 방지
+            const cleanText = (text) => text === undefined || text === null ? ' ' : String(text).replace(/\n/g, ' ');
 
-            // 유닛 맵 생성
             const unitMap = new Map();
             data.questionUnitMap?.question_units?.forEach(item => unitMap.set(item.qNum, item.unit));
-            // 학생 AI 분석이 더 구체적인 유닛 정보를 가지고 있을 수 있으므로 덮어쓰기
             aiStudent?.incorrect_analysis?.forEach(item => { if (item.unit) unitMap.set(item.qNum, item.unit); });
 
-            // --- ⭐️ 차트 이미지 생성 및 오류 방지 로직 (Data URL & 렌더링 지연) ⭐️ ---
+            // --- ⭐️ [수정] 차트 이미지 생성 (html2canvas fallback 적용) ⭐️ ---
             let chartImgData = null;
             const chartCanvas = document.getElementById('scoreChart');
-            
-            // 💡 렌더링 타이밍 문제 해결을 위해 500ms 대기
-            await new Promise(r => setTimeout(r, 500)); 
 
-            if (activeChart) {
+            if (chartCanvas) {
                 try {
-                    // 1. Chart.js의 내장 함수 시도
-                    chartImgData = activeChart.toBase64Image('image/png', 1.0);
-                } catch (e) {
-                    console.warn("Chart.js toBase64Image 실패, canvas toDataURL fallback 시도:", e);
-                    // 2. Tainted Canvas 또는 기타 오류 시 일반 Canvas 메서드 시도
-                    if (chartCanvas) {
-                        chartImgData = chartCanvas.toDataURL('image/png', 1.0);
+                    // 1. (강제 렌더링된) 차트 객체에서 이미지 추출 시도
+                    if (currentActiveChart && typeof currentActiveChart.toBase64Image === 'function') {
+                        chartImgData = currentActiveChart.toBase64Image('image/png', 1.0);
+                    } else {
+                        // 2. 1번 실패 시 html2canvas fallback
+                        console.warn("currentActiveChart가 없거나 비정상입니다. html2canvas fallback 실행");
+                        chartImgData = await html2canvas(chartCanvas, { 
+                            scale: 2,
+                            logging: false,      // ⭐️ (사용자 요청 3)
+                            useCORS: true,       // ⭐️ (사용자 요청 3)
+                            backgroundColor: null 
+                        }).then(canvas => canvas.toDataURL('image/png', 1.0));
                     }
+                    
+                    // 3. ⭐️ 검증: null/undefined를 먼저 체크하여 .startsWith 오류 방지
+                    if (!chartImgData || typeof chartImgData !== 'string' || !chartImgData.startsWith('data:image/')) {
+                        console.warn('chartImgData 형식이 잘못되었습니다. html2canvas로 재시도...');
+                        chartImgData = await html2canvas(chartCanvas, { 
+                            scale: 2,
+                            logging: false,
+                            useCORS: true,
+                            backgroundColor: null
+                        }).then(canvas => canvas.toDataURL('image/png', 1.0));
+                    }
+                } catch (e) {
+                    // 4. 모든 시도 실패 시
+                    console.error('차트 캡처 실패:', e);
+                    chartImgData = null; // 캡처 최종 실패
                 }
-                
-                // 👇 Data URL 접두사가 없는 경우 추가 (UNKNOWN 오류 방지)
-                if (chartImgData && !chartImgData.startsWith('data:')) {
-                    chartImgData = `data:image/png;base64,${chartImgData}`;
-                }
-                // 👆 추가된 로직
             }
+            // --- 차트 이미지 생성 수정 완료 ---
             
-            const pdfWidth = pdf.internal.pageSize.getWidth();
             let yPos = 40; // Y축 시작 위치
 
             // --- PDF 페이지 생성 시작 ---
@@ -433,119 +458,12 @@ export const useChartAndPDF = () => {
 
                 // ⭐️ 페이지 2: AI 종합 분석 + 차트
                 pdf.addPage();
+                pdf.setFont('NotoSansKR', 'normal'); // ⭐️ 한글 깨짐 방지: 폰트 재설정
                 addPdfTitle(pdf, `${selectedDate} Weekly Test`, `${selectedClass} / ${student.name} (AI 분석)`);
                 yPos = addPdfSectionTitle(pdf, '🤖 AI 종합 분석', 40);
                 
-                if (chartImgData) {
-                    let imageFormat = '';
-                    if (chartImgData.startsWith('data:image/png')) {
-                        imageFormat = 'PNG';
-                    } else if (chartImgData.startsWith('data:image/jpeg') || chartImgData.startsWith('data:image/jpg')) {
-                        imageFormat = 'JPEG';
-                    }
-
-                    if (imageFormat) {
-                        try {
-                            const imgProps = pdf.getImageProperties(chartImgData);
-                            const imgWidth = 180; // A4 너비에 맞춤 (좌우 여백 15mm*2)
-                            const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
-                            // ⭐️ 포맷을 명시하고 Data URL을 전달
-                            pdf.addImage(chartImgData, imageFormat, 15, yPos, imgWidth, imgHeight, undefined, 'FAST');
-                            yPos += imgHeight + 10;
-                        } catch (e) {
-                            console.error("PDF addImage/getImageProperties 오류:", e);
-                            setErrorMessage(`PDF 차트 이미지 처리 중 오류가 발생했습니다: ${e.message}.`);
-                            yPos += 70; // 오류 시 차트 공간 확보
-                        }
-                    } else {
-                        console.error("차트 이미지 데이터 형식이 유효하지 않아 PDF에 추가할 수 없습니다.");
-                        yPos += 70;
-                    }
-                }
-                
-                if (student.submitted) {
-                    yPos = addAiAnalysisSection(pdf, '⭐ 강점 (Strengths)', aiStudent?.strengths, yPos, 'blue');
-                    yPos = addAiAnalysisSection(pdf, '⚠️ 약점 (Weaknesses)', aiStudent?.weaknesses, yPos, 'red');
-                    yPos = addAiAnalysisSection(pdf, '🚀 학습 추천 (Recommendations)', aiStudent?.recommendations, yPos, 'green');
-                } else {
-                    yPos = addAiAnalysisSection(pdf, '미응시', '학생이 시험에 응시하지 않아 AI 분석을 제공할 수 없습니다.', yPos, 'gray');
-                }
-
-
-                // ⭐️ 페이지 3: 문항 정오표 (AutoTable 사용)
-                pdf.addPage();
-                addPdfTitle(pdf, `${selectedDate} Weekly Test`, `${selectedClass} / ${student.name} (문항 정오표)`);
-                yPos = addPdfSectionTitle(pdf, '📋 문항 정오표', 40);
-                
-                const errataBody = student.answers.map((ans, i) => ([
-                    `${ans.qNum}번`,
-                    unitMap.get(ans.qNum) || '',
-                    getDifficulty(ans.qNum, selectedClass),
-                    ans.isCorrect ? 'O' : 'X',
-                    `${data.studentData?.answerRates?.[i] ?? 'N/A'}%`
-                ]));
-                
-                pdf.autoTable({
-                    startY: yPos,
-                    head: [['문항번호', '세부 개념 유형 (AI 분석)', '난이도', '정오', '반 전체 정답률(%)']],
-                    body: errataBody,
-                    theme: 'grid',
-                    styles: { font: 'NotoSansKR', fontSize: 9 },
-                    headStyles: { font: 'NotoSansKR', fillColor: [248, 250, 252], textColor: [55, 65, 81] },
-                    didDrawCell: (hookData) => {
-                        if (hookData.section === 'body' && hookData.column.index === 3) {
-                            if (hookData.cell.text[0] === 'X') {
-                                hookData.cell.styles.textColor = [220, 38, 38]; // text-red-600
-                                hookData.cell.styles.fillColor = [254, 242, 242]; // bg-red-50
-                            } else {
-                                hookData.cell.styles.textColor = [37, 99, 235]; // text-blue-600
-                            }
-                        }
-                    }
-                });
-
-                // ⭐️ 페이지 4: 오답 분석 및 대응 방안 (AutoTable 사용)
-                if (aiStudent?.incorrect_analysis?.length > 0) {
-                    pdf.addPage();
-                    addPdfTitle(pdf, `${selectedDate} Weekly Test`, `${selectedClass} / ${student.name} (오답 분석)`);
-                    yPos = addPdfSectionTitle(pdf, '🔍 오답 분석 및 대응 방안 (AI 기반)', 40);
-                    
-                    const analysisBody = aiStudent.incorrect_analysis.map(item => ([
-                        `${item.qNum}번`,
-                        unitMap.get(item.qNum) || '분석 필요',
-                        getDifficulty(item.qNum, selectedClass),
-                        cleanText(item.analysis_point),
-                        cleanText(item.solution)
-                    ]));
-
-                    pdf.autoTable({
-                        startY: yPos,
-                        head: [['문항번호', '세부 개념 유형', '난이도', '분석 포인트 (AI)', '대응 방안 (AI)']],
-                        body: analysisBody,
-                        theme: 'grid',
-                        styles: { font: 'NotoSansKR', fontSize: 9, cellPadding: 2 },
-                        headStyles: { font: 'NotoSansKR', fillColor: [248, 250, 252], textColor: [55, 65, 81] },
-                        columnStyles: {
-                            3: { cellWidth: 50 },
-                            4: { cellWidth: 50 }
-                        },
-                        didDrawCell: (hookData) => {
-                            if (hookData.section === 'body') {
-                                hookData.cell.styles.fillColor = [254, 242, 242]; // bg-red-50
-                            }
-                        }
-                    });
-                }
-                
-            } else {
-                // ⭐️ 페이지 1: 반 전체 종합 분석 + 차트
-                addPdfTitle(pdf, `${selectedClass} ${selectedDate} 주간테스트 리포트 (반 전체)`);
-                yPos = addPdfSectionTitle(pdf, '💡 반 전체 주요 특징', 40);
-                yPos = addFeaturesSection(pdf, data, yPos);
-                
-                yPos = addPdfSectionTitle(pdf, '🤖 반 전체 AI 종합 분석', yPos + 5);
-
-                if (chartImgData) {
+                // ⭐️ [수정] chartImgData가 유효한 data URL인지 최종 확인
+                if (chartImgData && typeof chartImgData === 'string' && chartImgData.startsWith('data:image/')) {
                     let imageFormat = '';
                     if (chartImgData.startsWith('data:image/png')) {
                         imageFormat = 'PNG';
@@ -563,22 +481,141 @@ export const useChartAndPDF = () => {
                         } catch (e) {
                             console.error("PDF addImage/getImageProperties 오류:", e);
                             setErrorMessage(`PDF 차트 이미지 처리 중 오류가 발생했습니다: ${e.message}.`);
-                            yPos += 70;
+                            yPos += 10; // 오류 시 최소 여백
                         }
                     } else {
                         console.error("차트 이미지 데이터 형식이 유효하지 않아 PDF에 추가할 수 없습니다.");
-                        yPos += 70;
+                        yPos = addWrappedText(pdf, '(차트 이미지 캡처에 실패했거나 데이터 형식이 유효하지 않습니다.)', yPos, { color: [220, 38, 38] });
+                        yPos += 5;
                     }
+                } else {
+                    yPos = addWrappedText(pdf, '(차트 이미지를 캡처하는 데 실패했습니다. 다시 시도해 주세요.)', yPos, { color: [220, 38, 38] });
+                    yPos += 5;
+                }
+                
+                if (student.submitted) {
+                    yPos = addAiAnalysisSection(pdf, '⭐ 강점 (Strengths)', aiStudent?.strengths, yPos, 'blue');
+                    yPos = addAiAnalysisSection(pdf, '⚠️ 약점 (Weaknesses)', aiStudent?.weaknesses, yPos, 'red');
+                    yPos = addAiAnalysisSection(pdf, '🚀 학습 추천 (Recommendations)', aiStudent?.recommendations, yPos, 'green');
+                } else {
+                    yPos = addAiAnalysisSection(pdf, '미응시', '학생이 시험에 응시하지 않아 AI 분석을 제공할 수 없습니다.', yPos, 'gray');
+                }
+
+
+                // ⭐️ 페이지 3: 문항 정오표 (AutoTable 사용)
+                pdf.addPage();
+                pdf.setFont('NotoSansKR', 'normal'); // ⭐️ 한글 깨짐 방지: 폰트 재설정
+                addPdfTitle(pdf, `${selectedDate} Weekly Test`, `${selectedClass} / ${student.name} (문항 정오표)`);
+                yPos = addPdfSectionTitle(pdf, '📋 문항 정오표', 40);
+                
+                const errataBody = student.answers.map((ans, i) => ([
+                    `${ans.qNum}번`,
+                    unitMap.get(ans.qNum) || '',
+                    getDifficulty(ans.qNum, selectedClass),
+                    ans.isCorrect ? 'O' : 'X',
+                    `${data.studentData.answerRates[i] ?? 'N/A'}%`
+                ]));
+                
+                // ⭐️ [수정] (C) autoTable 폰트 스타일 지정
+                autoTable(pdf, {
+                    startY: yPos,
+                    head: [['문항번호', '세부 개념 유형 (AI 분석)', '난이도', '정오', '반 전체 정답률(%)']],
+                    body: errataBody,
+                    theme: 'grid',
+                    styles: { font: 'NotoSansKR', fontStyle: 'normal', fontSize: 9 }, // ⭐️ FONT ADDED
+                    headStyles: { font: 'NotoSansKR', fontStyle: 'normal', fillColor: [248, 250, 252], textColor: [55, 65, 81] }, // ⭐️ FONT ADDED
+                    didDrawCell: (hookData) => {
+                        if (hookData.section === 'body' && hookData.column.index === 3) {
+                            if (hookData.cell.text[0] === 'X') {
+                                hookData.cell.styles.textColor = [220, 38, 38]; // text-red-600
+                                hookData.cell.styles.fillColor = [254, 242, 242]; // bg-red-50
+                            } else {
+                                hookData.cell.styles.textColor = [37, 99, 235]; // text-blue-600
+                            }
+                        }
+                    }
+                });
+
+                // ⭐️ 페이지 4: 오답 분석 및 대응 방안 (AutoTable 사용)
+                if (aiStudent?.incorrect_analysis?.length > 0) {
+                    pdf.addPage();
+                    pdf.setFont('NotoSansKR', 'normal'); // ⭐️ 한글 깨짐 방지: 폰트 재설정
+                    addPdfTitle(pdf, `${selectedDate} Weekly Test`, `${selectedClass} / ${student.name} (오답 분석)`);
+                    yPos = addPdfSectionTitle(pdf, '🔍 오답 분석 및 대응 방안 (AI 기반)', 40);
+                    
+                    const analysisBody = aiStudent.incorrect_analysis.map(item => ([
+                        `${item.qNum}번`,
+                        unitMap.get(item.qNum) || '분석 필요',
+                        getDifficulty(item.qNum, selectedClass),
+                        cleanText(item.analysis_point),
+                        cleanText(item.solution)
+                    ]));
+
+                    // ⭐️ [수정] (C) autoTable 폰트 스타일 지정
+                    autoTable(pdf, {
+                        startY: yPos,
+                        head: [['문항번호', '세부 개념 유형', '난이도', '분석 포인트 (AI)', '대응 방안 (AI)']],
+                        body: analysisBody,
+                        theme: 'grid',
+                        styles: { font: 'NotoSansKR', fontStyle: 'normal', fontSize: 9, cellPadding: 2 }, // ⭐️ FONT ADDED
+                        headStyles: { font: 'NotoSansKR', fontStyle: 'normal', fillColor: [248, 250, 252], textColor: [55, 65, 81] }, // ⭐️ FONT ADDED
+                        columnStyles: {
+                            3: { cellWidth: 50 },
+                            4: { cellWidth: 50 }
+                        },
+                        didDrawCell: (hookData) => {
+                            if (hookData.section === 'body') {
+                                hookData.cell.styles.fillColor = [254, 242, 242]; // bg-red-50
+                            }
+                        }
+                    });
+                }
+                
+            } else {
+                // (반 전체 리포트 로직)
+                addPdfTitle(pdf, `${selectedClass} ${selectedDate} 주간테스트 리포트 (반 전체)`);
+                yPos = addPdfSectionTitle(pdf, '💡 반 전체 주요 특징', 40);
+                yPos = addFeaturesSection(pdf, data, yPos);
+                yPos = addPdfSectionTitle(pdf, '🤖 반 전체 AI 종합 분석', yPos + 5);
+
+                if (chartImgData && typeof chartImgData === 'string' && chartImgData.startsWith('data:image/')) {
+                    // ... (차트 이미지 추가 로직)
+                    let imageFormat = '';
+                    if (chartImgData.startsWith('data:image/png')) {
+                        imageFormat = 'PNG';
+                    } else if (chartImgData.startsWith('data:image/jpeg') || chartImgData.startsWith('data:image/jpg')) {
+                        imageFormat = 'JPEG';
+                    }
+
+                    if (imageFormat) {
+                        try {
+                            const imgProps = pdf.getImageProperties(chartImgData);
+                            const imgWidth = 180;
+                            const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
+                            pdf.addImage(chartImgData, imageFormat, 15, yPos, imgWidth, imgHeight, undefined, 'FAST');
+                            yPos += imgHeight + 10;
+                        } catch (e) {
+                            console.error("PDF addImage/getImageProperties 오류:", e);
+                            setErrorMessage(`PDF 차트 이미지 처리 중 오류가 발생했습니다: ${e.message}.`);
+                            yPos += 10;
+                        }
+                    } else {
+                        console.error("차트 이미지 데이터 형식이 유효하지 않아 PDF에 추가할 수 없습니다.");
+                        yPos = addWrappedText(pdf, '(차트 이미지 캡처에 실패했거나 데이터 형식이 유효하지 않습니다.)', yPos, { color: [220, 38, 38] });
+                        yPos += 5;
+                    }
+                } else {
+                    yPos = addWrappedText(pdf, '(차트 이미지를 캡처하는 데 실패했습니다. 다시 시도해 주세요.)', yPos, { color: [220, 38, 38] });
+                    yPos += 5;
                 }
                 
                 yPos = addAiAnalysisSection(pdf, '📊 종합 총평', aiOverall?.summary, yPos, 'gray');
                 yPos = addAiAnalysisSection(pdf, '⚠️ 공통 약점 분석', aiOverall?.common_weaknesses, yPos, 'red');
                 yPos = addAiAnalysisSection(pdf, '🚀 수업 지도 방안', aiOverall?.recommendations, yPos, 'green');
 
-
-                // ⭐️ 페이지 2: 주요 오답 문항 분석 (표)
                 if (aiOverall?.question_analysis?.length > 0) {
                     pdf.addPage();
+                    pdf.setFont('NotoSansKR', 'normal'); // ⭐️ 한글 깨짐 방지: 폰트 재설정
                     addPdfTitle(pdf, `${selectedClass} ${selectedDate} 주간테스트 리포트 (반 전체)`);
                     yPos = addPdfSectionTitle(pdf, '🔍 주요 오답 문항 분석 (AI 기반)', 40);
                     
@@ -589,13 +626,14 @@ export const useChartAndPDF = () => {
                         cleanText(item.solution)
                     ]));
 
-                    pdf.autoTable({
+                    // ⭐️ [수정] (C) autoTable 폰트 스타일 지정
+                    autoTable(pdf, {
                         startY: yPos,
                         head: [['문항번호', '세부 개념 유형 (AI)', '핵심 분석', '지도 방안']],
                         body: analysisBody,
                         theme: 'grid',
-                        styles: { font: 'NotoSansKR', fontSize: 9, cellPadding: 2 },
-                        headStyles: { font: 'NotoSansKR', fillColor: [248, 250, 252], textColor: [55, 65, 81] },
+                        styles: { font: 'NotoSansKR', fontStyle: 'normal', fontSize: 9, cellPadding: 2 }, // ⭐️ FONT ADDED
+                        headStyles: { font: 'NotoSansKR', fontStyle: 'normal', fillColor: [248, 250, 252], textColor: [55, 65, 81] }, // ⭐️ FONT ADDED
                         columnStyles: {
                             2: { cellWidth: 55 },
                             3: { cellWidth: 55 }
@@ -619,13 +657,13 @@ export const useChartAndPDF = () => {
         } finally {
             button.innerHTML = `<svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" height="16" width="16" xmlns="http://www.w3.org/2000/svg" style="margin-right: 8px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg> PDF로 저장`;
             button.disabled = false;
+            
+            // ⭐️ (참고) 강제 렌더링으로 생성된 차트 객체는 setActiveChart로 관리되므로,
+            // ⭐️ useEffect 훅이 다음 렌더링 시 자동으로 정리해 줍니다. (별도 destroy 불필요)
         }
-    }, [activeChart, selectedClass, selectedDate, selectedStudent, setErrorMessage, testData]); // ⭐️ testData 의존성 추가
+    }, [activeChart, selectedClass, selectedDate, selectedStudent, setErrorMessage, testData, reportCurrentPage, setActiveChart]); // ⭐️ setActiveChart 의존성 추가
 
-
-    // --- 3. PDF 저장 Effect (useEffect) ---
-    useEffect(() => {
-        document.body.addEventListener('click', handlePdfSave);
-        return () => document.body.removeEventListener('click', handlePdfSave);
-    }, [handlePdfSave]);
+    
+    // ⭐️ App.jsx에서 사용할 수 있도록 handlePdfSave 반환
+    return { handlePdfSave };
 };

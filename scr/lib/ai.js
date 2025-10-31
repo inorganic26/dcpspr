@@ -2,9 +2,10 @@
 // TODO: 이 파일은 현재 실제 Gemini API를 호출하지 않고,
 // 제공해주신 예시 PDF의 데이터를 임시로 반환합니다.
 async function callGeminiAPI(prompt) {
-    console.warn("callGeminiAPI - 실제 API 호출이 필요합니다. 임시 데이터를 반환합니다.");
+    // ⭐️ [수정] console.warn을 console.log로 변경
+    console.log("callGeminiAPI (stub 모드):", prompt.substring(0, 100) + "...");
     
-    // ⭐️ 학생 개별 분석 요청 (김주원 학생 데이터) [cite: 209-219, 223]
+    // ⭐️ 학생 개별 분석 요청 (김주원 학생 데이터)
     if (prompt.includes("학생 정보:")) {
         return Promise.resolve(JSON.stringify({
             "strengths": "취득 점수가 반 평균 점수(58점)보다 높은 60점을 기록하여 해당 단원의 기본적인 개념 이해도는 양호한 수준으로 판단됩니다. 특히, 도함수의 정의를 활용한 함수의 증가/감소, 극대/극소 판별, 그리고 간단한 속도와 가속도 문제 등 기본 및 중간 난이도의 핵심 문항들을 성공적으로 해결했습니다. 이는 꾸준한 학습 태도와 계산 숙련도가 뒷받침되었음을 의미합니다.",
@@ -22,7 +23,7 @@ async function callGeminiAPI(prompt) {
             ]
         }));
     }
-    // ⭐️ 반 전체 분석 요청 (PDF 1페이지 데이터) [cite: 161, 165, 167-184]
+    // ⭐️ 반 전체 분석 요청 (PDF 1페이지 데이터)
      if (prompt.includes("반 전체 데이터:")) {
         return Promise.resolve(JSON.stringify({
              "summary": "반 평균 58점, 최고 65점, 최저 40점으로, 일부 고난도 문항에서 오답률이 높게 나타났습니다. 전반적으로 기본 개념은 숙지하고 있으나, 심화 개념 적용 및 복합 문제 해결에 어려움을 겪는 것으로 보입니다.",
@@ -39,7 +40,7 @@ async function callGeminiAPI(prompt) {
              ]
          }));
      }
-     // ⭐️ 단원 매핑 요청 (PDF 3페이지 데이터) [cite: 221]
+     // ⭐️ 단원 매핑 요청 (PDF 3페이지 데이터)
       if (prompt.includes("RPM 교재 목차:")) {
          return Promise.resolve(JSON.stringify({ "question_units": [
                 { "qNum": 1, "unit": "함수의 증가와 감소 판정" },
