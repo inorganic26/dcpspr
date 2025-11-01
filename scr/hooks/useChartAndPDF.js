@@ -54,8 +54,8 @@ async function initializePdf() {
 
         try {
             pdf.addFileToVFS('NotoSansKR-Regular.ttf', fontData);
-            // ⭐️ [수정] (A) 'Identity-H' 유니코드 인코딩 설정
-            pdf.addFont('NotoSansKR-Regular.ttf', 'NotoSansKR', 'normal', 'Identity-H');
+            // ⭐️ [폰트 오류 해결] 'Identity-H' 인코딩 파라미터를 제거합니다.
+            pdf.addFont('NotoSansKR-Regular.ttf', 'NotoSansKR', 'normal');
         } catch (e) {
             console.error("Failed to add font to jsPDF:", e);
             throw new Error(`PDF 폰트 로딩 실패: ${e.message}.`);
@@ -231,11 +231,20 @@ function addAiAnalysisSection(pdf, title, content, yPos, colorTheme = 'gray') {
         displayText = '(내용 없음)';
     }
 
+    // ⭐️ [레이아웃 수정]
+    // AI 텍스트의 불필요한 빈 줄바꿈(공간)을 제거합니다.
+    // (예: "\n\n\n" -> "\n")
+    if (typeof displayText === 'string') {
+        displayText = displayText.replace(/(\n\s*){2,}/g, '\n'); 
+    }
+
     pdf.setFont('NotoSansKR', 'normal');
     
+    // 텍스트 높이를 다시 계산합니다.
     const textLines = pdf.splitTextToSize(displayText, 170);
     const textHeight = (textLines.length * 10 * 0.352778 * 1.6) + 12; 
     
+    // 높이 계산 후 페이지 넘김 여부 판단
     if (yPos + textHeight + 15 > 280) { 
         pdf.addPage();
         yPos = 20; 
@@ -243,7 +252,7 @@ function addAiAnalysisSection(pdf, title, content, yPos, colorTheme = 'gray') {
     
     pdf.setDrawColor(theme.border[0], theme.border[1], theme.border[2]);
     pdf.setFillColor(theme.bg[0], theme.bg[1], theme.bg[2]);
-    pdf.rect(15, yPos, 180, textHeight + 15, 'FD');
+    pdf.rect(15, yPos, 180, textHeight + 15, 'FD'); // 수정된 textHeight 적용
     
     pdf.setFontSize(11);
     pdf.setTextColor(theme.title[0], theme.title[1], theme.title[2]);
@@ -288,8 +297,9 @@ export const useChartAndPDF = () => {
         let animFrameId2 = null; 
 
         const renderChart = () => {
-            // ⭐️ 2페이지일 때만 차트를 렌더링하도록 조건 강화
-            if (reportCurrentPage === 2 && !aiLoading && reportHTML) {
+            // [차트 타이밍 문제 해결]
+            // reportCurrentPage 조건을 제거하여 차트를 미리 렌더링합니다.
+            if (!aiLoading && reportHTML) {
                 const chartCanvas = document.getElementById('scoreChart');
                 const data = testData[selectedClass]?.[selectedDate];
                 
@@ -298,7 +308,6 @@ export const useChartAndPDF = () => {
                         const existingChart = Chart.getChart(chartCanvas);
                         if (existingChart) existingChart.destroy();
 
-                        // ⭐️ [수정] (③) willReadFrequently 경고 해결
                         const ctx = chartCanvas.getContext('2d', { willReadFrequently: true });
                         
                         const studentForChart = data.studentData.students.find(s => s.name === selectedStudent) || null;
@@ -334,37 +343,30 @@ export const useChartAndPDF = () => {
         button.textContent = '저장 중...';
         button.disabled = true;
         
-        // ⭐️ [사용자 요청 ②] 차트 강제 렌더링 로직
         let currentActiveChart = activeChart;
-        let needsChartRendering = false;
         
-        // 1. 1페이지 등에서 PDF 저장을 눌러 activeChart가 비어있는 경우
         if (!currentActiveChart) {
             const chartCanvas = document.getElementById('scoreChart');
             const data = testData[selectedClass]?.[selectedDate];
             if (chartCanvas && data?.studentData) {
-                needsChartRendering = true;
-                button.textContent = '차트 준비 중...'; // ⭐️ 사용자 피드백
+                button.textContent = '차트 준비 중...'; 
                 console.warn('PDF 저장 전 차트 강제 렌더링 실행 (activeChart is null)');
                 
                 const existingChart = Chart.getChart(chartCanvas);
                 if (existingChart) existingChart.destroy();
                 
-                // ⭐️ [수정] (③) willReadFrequently 경고 해결
                 const ctx = chartCanvas.getContext('2d', { willReadFrequently: true });
                 
                 const studentForChart = data.studentData.students.find(s => s.name === selectedStudent) || null;
                 const newChart = renderScoreChart(chartCanvas, data.studentData, studentForChart);
                 
-                currentActiveChart = newChart; // 로컬 변수에 할당
-                setActiveChart(newChart); // Context에도 반영
+                currentActiveChart = newChart; 
+                setActiveChart(newChart);
                 
-                await new Promise(resolve => setTimeout(resolve, 300)); // ⭐️ 렌더링 안정화 대기 (300ms)
+                await new Promise(resolve => setTimeout(resolve, 300)); 
             }
         }
-        // --- ⭐️ 강제 렌더링 종료 ⭐️ ---
         
-        // 렌더링 후 버튼 텍스트 원복 (저장 중...)
         button.textContent = '저장 중...';
 
         let pdf;
@@ -397,27 +399,24 @@ export const useChartAndPDF = () => {
             data.questionUnitMap?.question_units?.forEach(item => unitMap.set(item.qNum, item.unit));
             aiStudent?.incorrect_analysis?.forEach(item => { if (item.unit) unitMap.set(item.qNum, item.unit); });
 
-            // --- ⭐️ [수정] 차트 이미지 생성 (html2canvas fallback 적용) ⭐️ ---
+            // --- ⭐️ 차트 이미지 생성 ⭐️ ---
             let chartImgData = null;
             const chartCanvas = document.getElementById('scoreChart');
 
             if (chartCanvas) {
                 try {
-                    // 1. (강제 렌더링된) 차트 객체에서 이미지 추출 시도
                     if (currentActiveChart && typeof currentActiveChart.toBase64Image === 'function') {
                         chartImgData = currentActiveChart.toBase64Image('image/png', 1.0);
                     } else {
-                        // 2. 1번 실패 시 html2canvas fallback
                         console.warn("currentActiveChart가 없거나 비정상입니다. html2canvas fallback 실행");
                         chartImgData = await html2canvas(chartCanvas, { 
                             scale: 2,
-                            logging: false,      // ⭐️ (사용자 요청 3)
-                            useCORS: true,       // ⭐️ (사용자 요청 3)
+                            logging: false,
+                            useCORS: true,
                             backgroundColor: null 
                         }).then(canvas => canvas.toDataURL('image/png', 1.0));
                     }
                     
-                    // 3. ⭐️ 검증: null/undefined를 먼저 체크하여 .startsWith 오류 방지
                     if (!chartImgData || typeof chartImgData !== 'string' || !chartImgData.startsWith('data:image/')) {
                         console.warn('chartImgData 형식이 잘못되었습니다. html2canvas로 재시도...');
                         chartImgData = await html2canvas(chartCanvas, { 
@@ -428,12 +427,10 @@ export const useChartAndPDF = () => {
                         }).then(canvas => canvas.toDataURL('image/png', 1.0));
                     }
                 } catch (e) {
-                    // 4. 모든 시도 실패 시
                     console.error('차트 캡처 실패:', e);
-                    chartImgData = null; // 캡처 최종 실패
+                    chartImgData = null; 
                 }
             }
-            // --- 차트 이미지 생성 수정 완료 ---
             
             let yPos = 40; // Y축 시작 위치
 
@@ -462,7 +459,6 @@ export const useChartAndPDF = () => {
                 addPdfTitle(pdf, `${selectedDate} Weekly Test`, `${selectedClass} / ${student.name} (AI 분석)`);
                 yPos = addPdfSectionTitle(pdf, '🤖 AI 종합 분석', 40);
                 
-                // ⭐️ [수정] chartImgData가 유효한 data URL인지 최종 확인
                 if (chartImgData && typeof chartImgData === 'string' && chartImgData.startsWith('data:image/')) {
                     let imageFormat = '';
                     if (chartImgData.startsWith('data:image/png')) {
@@ -474,14 +470,19 @@ export const useChartAndPDF = () => {
                     if (imageFormat) {
                         try {
                             const imgProps = pdf.getImageProperties(chartImgData);
-                            const imgWidth = 180;
-                            const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
-                            pdf.addImage(chartImgData, imageFormat, 15, yPos, imgWidth, imgHeight, undefined, 'FAST');
-                            yPos += imgHeight + 10;
+                            // ⭐️ [레이아웃 수정 1] 차트 폭 180 (유지)
+                            const imgWidth = 180; 
+                            // ⭐️ [레이아웃 수정 1] 차트 세로 높이에 최대값(100mm) 강제
+                            let imgHeight = (imgProps.height * imgWidth) / imgProps.width;
+                            imgHeight = Math.min(imgHeight, 100); // 100mm를 넘지 않도록 제한
+
+                            const xOffset = (pdf.internal.pageSize.getWidth() - imgWidth) / 2;
+                            pdf.addImage(chartImgData, imageFormat, xOffset, yPos, imgWidth, imgHeight, undefined, 'FAST');
+                            yPos += imgHeight + 10; // 차트와 텍스트 사이 간격
                         } catch (e) {
                             console.error("PDF addImage/getImageProperties 오류:", e);
                             setErrorMessage(`PDF 차트 이미지 처리 중 오류가 발생했습니다: ${e.message}.`);
-                            yPos += 10; // 오류 시 최소 여백
+                            yPos += 10; 
                         }
                     } else {
                         console.error("차트 이미지 데이터 형식이 유효하지 않아 PDF에 추가할 수 없습니다.");
@@ -516,14 +517,13 @@ export const useChartAndPDF = () => {
                     `${data.studentData.answerRates[i] ?? 'N/A'}%`
                 ]));
                 
-                // ⭐️ [수정] (C) autoTable 폰트 스타일 지정
                 autoTable(pdf, {
                     startY: yPos,
                     head: [['문항번호', '세부 개념 유형 (AI 분석)', '난이도', '정오', '반 전체 정답률(%)']],
                     body: errataBody,
                     theme: 'grid',
-                    styles: { font: 'NotoSansKR', fontStyle: 'normal', fontSize: 9 }, // ⭐️ FONT ADDED
-                    headStyles: { font: 'NotoSansKR', fontStyle: 'normal', fillColor: [248, 250, 252], textColor: [55, 65, 81] }, // ⭐️ FONT ADDED
+                    styles: { font: 'NotoSansKR', fontStyle: 'normal', fontSize: 9 }, // ⭐️ FONT
+                    headStyles: { font: 'NotoSansKR', fontStyle: 'normal', fillColor: [248, 250, 252], textColor: [55, 65, 81] }, // ⭐️ FONT
                     didDrawCell: (hookData) => {
                         if (hookData.section === 'body' && hookData.column.index === 3) {
                             if (hookData.cell.text[0] === 'X') {
@@ -551,14 +551,13 @@ export const useChartAndPDF = () => {
                         cleanText(item.solution)
                     ]));
 
-                    // ⭐️ [수정] (C) autoTable 폰트 스타일 지정
                     autoTable(pdf, {
                         startY: yPos,
                         head: [['문항번호', '세부 개념 유형', '난이도', '분석 포인트 (AI)', '대응 방안 (AI)']],
                         body: analysisBody,
                         theme: 'grid',
-                        styles: { font: 'NotoSansKR', fontStyle: 'normal', fontSize: 9, cellPadding: 2 }, // ⭐️ FONT ADDED
-                        headStyles: { font: 'NotoSansKR', fontStyle: 'normal', fillColor: [248, 250, 252], textColor: [55, 65, 81] }, // ⭐️ FONT ADDED
+                        styles: { font: 'NotoSansKR', fontStyle: 'normal', fontSize: 9, cellPadding: 2 }, // ⭐️ FONT
+                        headStyles: { font: 'NotoSansKR', fontStyle: 'normal', fillColor: [248, 250, 252], textColor: [55, 65, 81] }, // ⭐️ FONT
                         columnStyles: {
                             3: { cellWidth: 50 },
                             4: { cellWidth: 50 }
@@ -579,7 +578,6 @@ export const useChartAndPDF = () => {
                 yPos = addPdfSectionTitle(pdf, '🤖 반 전체 AI 종합 분석', yPos + 5);
 
                 if (chartImgData && typeof chartImgData === 'string' && chartImgData.startsWith('data:image/')) {
-                    // ... (차트 이미지 추가 로직)
                     let imageFormat = '';
                     if (chartImgData.startsWith('data:image/png')) {
                         imageFormat = 'PNG';
@@ -590,9 +588,14 @@ export const useChartAndPDF = () => {
                     if (imageFormat) {
                         try {
                             const imgProps = pdf.getImageProperties(chartImgData);
+                            // ⭐️ [레이아웃 수정 2] 차트 폭 180 (유지)
                             const imgWidth = 180;
-                            const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
-                            pdf.addImage(chartImgData, imageFormat, 15, yPos, imgWidth, imgHeight, undefined, 'FAST');
+                            // ⭐️ [레이아웃 수정 2] 차트 세로 높이에 최대값(100mm) 강제
+                            let imgHeight = (imgProps.height * imgWidth) / imgProps.width;
+                            imgHeight = Math.min(imgHeight, 100); // 100mm를 넘지 않도록 제한
+
+                            const xOffset = (pdf.internal.pageSize.getWidth() - imgWidth) / 2;
+                            pdf.addImage(chartImgData, imageFormat, xOffset, yPos, imgWidth, imgHeight, undefined, 'FAST');
                             yPos += imgHeight + 10;
                         } catch (e) {
                             console.error("PDF addImage/getImageProperties 오류:", e);
@@ -626,14 +629,13 @@ export const useChartAndPDF = () => {
                         cleanText(item.solution)
                     ]));
 
-                    // ⭐️ [수정] (C) autoTable 폰트 스타일 지정
                     autoTable(pdf, {
                         startY: yPos,
                         head: [['문항번호', '세부 개념 유형 (AI)', '핵심 분석', '지도 방안']],
                         body: analysisBody,
                         theme: 'grid',
-                        styles: { font: 'NotoSansKR', fontStyle: 'normal', fontSize: 9, cellPadding: 2 }, // ⭐️ FONT ADDED
-                        headStyles: { font: 'NotoSansKR', fontStyle: 'normal', fillColor: [248, 250, 252], textColor: [55, 65, 81] }, // ⭐️ FONT ADDED
+                        styles: { font: 'NotoSansKR', fontStyle: 'normal', fontSize: 9, cellPadding: 2 }, // ⭐️ FONT
+                        headStyles: { font: 'NotoSansKR', fontStyle: 'normal', fillColor: [248, 250, 252], textColor: [55, 65, 81] }, // ⭐️ FONT
                         columnStyles: {
                             2: { cellWidth: 55 },
                             3: { cellWidth: 55 }
@@ -657,13 +659,9 @@ export const useChartAndPDF = () => {
         } finally {
             button.innerHTML = `<svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" height="16" width="16" xmlns="http://www.w3.org/2000/svg" style="margin-right: 8px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg> PDF로 저장`;
             button.disabled = false;
-            
-            // ⭐️ (참고) 강제 렌더링으로 생성된 차트 객체는 setActiveChart로 관리되므로,
-            // ⭐️ useEffect 훅이 다음 렌더링 시 자동으로 정리해 줍니다. (별도 destroy 불필요)
         }
-    }, [activeChart, selectedClass, selectedDate, selectedStudent, setErrorMessage, testData, reportCurrentPage, setActiveChart]); // ⭐️ setActiveChart 의존성 추가
+    }, [activeChart, selectedClass, selectedDate, selectedStudent, setErrorMessage, testData, reportCurrentPage, setActiveChart]); 
 
     
-    // ⭐️ App.jsx에서 사용할 수 있도록 handlePdfSave 반환
     return { handlePdfSave };
 };
