@@ -1,143 +1,116 @@
-import { useState, useRef, useCallback } from 'react';
+import { useRef, useState, useCallback } from 'react';
 import { useReportContext } from '../context/ReportContext';
-import { pairFiles, parseCSV, parseXLSX, parsePDF, processStudentData } from '../lib/fileParser.js';
+import { pairFiles, parsePDF, parseCSV, parseXLSX, processStudentData } from '../lib/fileParser';
+// ⭐️ 1. AI 함수 2개 임포트
+import { getOverallAIAnalysis, getQuestionUnitMapping } from '../lib/ai.js'; 
 
 export const useFileProcessor = ({ saveDataToFirestore }) => {
     const { 
-        testData, setTestData, setCurrentPage, 
-        processing, setProcessing, setErrorMessage,
-        uploadDate // ⭐️ Context에서 업로드 날짜 가져오기
+        setProcessing, setErrorMessage, setTestData, 
+        setCurrentPage, uploadDate, setUploadDate, setSelectedDate
     } = useReportContext();
-    const [selectedFiles, setSelectedFiles] = useState([]);
+    
     const fileInputRef = useRef(null);
+    const [selectedFiles, setSelectedFiles] = useState([]);
 
     const handleFileChange = (e) => {
-        const files = Array.from(e.target.files);
-        setSelectedFiles(files);
+        setSelectedFiles(Array.from(e.target.files));
         setErrorMessage('');
     };
 
     const handleFileProcess = useCallback(async () => {
+        if (!uploadDate) {
+            setErrorMessage('시험 날짜를 선택해야 합니다.');
+            return;
+        }
+
         setProcessing(true);
         setErrorMessage('');
 
-        // ⭐️⭐️⭐️ 변경된 부분 (날짜 확인) ⭐️⭐️⭐️
-        if (!uploadDate) {
-            setErrorMessage('시험 날짜를 입력해주세요. (예: 10월 30일)');
-            setProcessing(false);
-            return;
-        }
-        // ⭐️⭐️⭐️ 변경 완료 ⭐️⭐️⭐️
-
-        if (selectedFiles.length === 0) {
-            setErrorMessage('파일을 선택해주세요.');
-            setProcessing(false);
-            return;
-        }
-
         const pairedFiles = pairFiles(selectedFiles);
-        
-        if (Object.keys(pairedFiles).length === 0) {
-            setErrorMessage('올바르게 페어링된 PDF와 CSV/XLSX 파일이 없습니다. 파일 이름에서 "반 이름"을 감지할 수 있는지 확인해주세요.');
+        const classNames = Object.keys(pairedFiles);
+        if (classNames.length === 0) {
+            setErrorMessage('파일 쌍(PDF 1개 + 성적표 1개)을 찾을 수 없습니다. 파일 이름을 확인해주세요 (예: "고1A반 시험지.pdf", "고1A반 성적표.csv")');
             setProcessing(false);
             return;
         }
 
-        let newTestData = JSON.parse(JSON.stringify(testData)); 
-        let successCount = 0;
-        let errorMessages = [];
-        
-        const pairedPdfFiles = Object.values(pairedFiles).map(p => p.pdf).filter(Boolean);
-        const textbookFile = selectedFiles.find(f => f.type === 'application/pdf' && !pairedPdfFiles.includes(f));
-        const textbookPromise = textbookFile ? parsePDF(textbookFile) : Promise.resolve('');
+        let hasError = false;
+        let mergedData = {};
 
-
-        const processingPromises = Object.keys(pairedFiles).map(async (key) => {
-            const pair = pairedFiles[key];
-            if (pair.spreadsheet && pair.pdf) {
-                try {
-                    // ⭐️⭐️⭐️ 변경된 부분 (key가 반 이름) ⭐️⭐️⭐️
-                    const className = key; // key가 이제 반 이름입니다.
-                    const date = uploadDate; // 사용자가 입력한 날짜를 사용합니다.
-                    // ⭐️⭐️⭐️ 변경 완료 ⭐️⭐️⭐️
-
-                    let spreadsheetPromise;
-                    const extension = pair.spreadsheet.name.split('.').pop()?.toLowerCase();
-                    if (extension === 'xlsx') {
-                        spreadsheetPromise = parseXLSX(pair.spreadsheet);
-                    } else if (extension === 'csv') {
-                        spreadsheetPromise = parseCSV(pair.spreadsheet);
-                    } else {
-                         throw new Error(`지원하지 않는 스프레드시트 형식입니다: ${pair.spreadsheet.name}`);
+        for (const key of classNames) {
+            const { pdf, spreadsheet } = pairedFiles[key];
+            try {
+                // 1. 파일 파싱 (기존과 동일)
+                const pdfText = await parsePDF(pdf);
+                const spreadsheetData = spreadsheet.name.endsWith('.csv') ? 
+                    await parseCSV(spreadsheet) : 
+                    await parseXLSX(spreadsheet);
+                
+                const studentData = processStudentData(spreadsheetData);
+                
+                // 2. 데이터 기본 구조 생성 (기존과 동일)
+                mergedData[key] = {
+                    [uploadDate]: {
+                        pdfInfo: { fileName: pdf.name, fullText: pdfText },
+                        studentData: studentData,
+                        aiOverallAnalysis: null, // (곧 채워짐)
+                        questionUnitMap: null, // (곧 채워짐)
                     }
-                    const pdfPromise = parsePDF(pair.pdf);
-                    const [spreadsheetData, pdfText] = await Promise.all([spreadsheetPromise, pdfPromise]);
+                };
+                const overallData = mergedData[key][uploadDate];
 
-                    if (!spreadsheetData || !pdfText) {
-                         throw new Error(`파일 파싱에 실패했습니다: ${pair.spreadsheet.name} 또는 ${pair.pdf.name}`);
-                    }
-                    
-                    const existingData = testData[className]?.[date];
-                    const newData = {
-                        pdfInfo: { fullText: pdfText },
-                        studentData: processStudentData(spreadsheetData)
-                    };
-                    
-                    if (existingData?.aiOverallAnalysis) newData.aiOverallAnalysis = existingData.aiOverallAnalysis;
-                    if (existingData?.questionUnitMap) newData.questionUnitMap = existingData.questionUnitMap;
-                    if (existingData?.studentData?.students) {
-                        newData.studentData.students.forEach(newStudent => {
-                            const oldStudent = existingData.studentData.students.find(s => s.name === newStudent.name);
-                            if (oldStudent?.aiAnalysis) newStudent.aiAnalysis = oldStudent.aiAnalysis;
-                        });
-                    }
+                // ⭐️ 3. [변경] AI 분석 2개를 파일 처리 시점에 미리 호출
+                setProcessing(true, `"${key}" 반 AI 분석 중...`);
+                
+                const overallPromise = getOverallAIAnalysis(overallData);
+                const unitMapPromise = getQuestionUnitMapping(overallData);
 
-                    // ⭐️ key 대신 className과 date를 반환
-                    return { key, className, date, data: newData };
-                } catch (error) {
-                    console.error(`Error processing pair ${key}:`, error);
-                    errorMessages.push(`파일 '${pair.spreadsheet?.name || '?'}'/'${pair.pdf?.name || '?'}' 처리 중 오류: ${error.message}`);
-                    return null;
-                }
+                // ⭐️ 4. [변경] AI 분석 결과를 기다림
+                const [aiOverall, unitMap] = await Promise.all([overallPromise, unitMapPromise]);
+                
+                // ⭐️ 5. [변경] AI 결과를 데이터에 저장
+                overallData.aiOverallAnalysis = aiOverall;
+                overallData.questionUnitMap = unitMap;
+
+            } catch (error) {
+                console.error(`Error processing files for ${key}:`, error);
+                setErrorMessage(`"${key}" 처리 오류: ${error.message}`);
+                hasError = true;
+                break;
             }
-            return null;
-        });
+        }
+
+        if (hasError) {
+            setProcessing(false);
+            return;
+        }
 
         try {
-            const allResults = await Promise.all([textbookPromise, ...processingPromises]);
-            const fileResults = allResults.slice(1);
+            // ⭐️ 6. [변경] AI 분석이 포함된 데이터를 DB에 저장
+            await saveDataToFirestore(mergedData); 
             
-            fileResults.forEach(result => {
-                if (result) {
-                    // ⭐️⭐️⭐️ 변경된 부분 (저장 경로) ⭐️⭐️⭐️
-                    const { className, date, data } = result;
-                    if (!newTestData[className]) { newTestData[className] = {}; }
-                    newTestData[className][date] = data; 
-                    // ⭐️⭐️⭐️ 변경 완료 ⭐️⭐️⭐️
-                    successCount++;
-                }
+            // ⭐️ 7. [변경] 전역 상태도 AI 분석이 포함된 데이터로 업데이트
+            setTestData(prevData => {
+                const newData = JSON.parse(JSON.stringify(prevData));
+                Object.keys(mergedData).forEach(className => {
+                    if (!newData[className]) newData[className] = {};
+                    newData[className][uploadDate] = mergedData[className][uploadDate];
+                });
+                return newData;
             });
+            
+            setSelectedDate(uploadDate);
+            setCurrentPage('page2'); // 반 선택 페이지로 이동
 
-            if (successCount > 0) {
-                setTestData(newTestData);
-                await saveDataToFirestore(newTestData); 
-                // ⭐️⭐️⭐️ 변경된 부분 (이동 경로) ⭐️⭐️⭐️
-                setCurrentPage('page3'); // ⭐️ 파일 처리 후 '날짜 선택' 화면으로 이동
-                // ⭐️⭐️⭐️ 변경 완료 ⭐️⭐️⭐️
-            } else if (errorMessages.length === 0) {
-                setErrorMessage('처리할 유효한 파일 쌍을 찾지 못했습니다.');
-            }
-            if (errorMessages.length > 0) {
-                setErrorMessage(errorMessages.join('\n'));
-            }
-        } catch (parseError) {
-             setErrorMessage(`파일 처리 중 오류가 발생했습니다: ${parseError.message}`);
+        } catch (error) {
+            setErrorMessage('데이터 저장 중 오류 발생: ' + error.message);
         } finally {
             setProcessing(false);
-            if (fileInputRef.current) fileInputRef.current.value = ''; 
             setSelectedFiles([]);
+            if(fileInputRef.current) fileInputRef.current.value = "";
         }
-    }, [processing, selectedFiles, testData, uploadDate, setProcessing, setErrorMessage, setCurrentPage, setTestData, saveDataToFirestore]); // ⭐️ uploadDate 의존성 추가
+    }, [selectedFiles, uploadDate, saveDataToFirestore, setProcessing, setErrorMessage, setTestData, setCurrentPage, setSelectedDate]);
 
     return { fileInputRef, selectedFiles, handleFileChange, handleFileProcess };
 };

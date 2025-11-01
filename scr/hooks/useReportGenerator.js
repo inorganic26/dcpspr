@@ -47,24 +47,26 @@ export const useReportGenerator = ({ saveDataToFirestore }) => {
         let currentDataForAI = newTestData[selectedClass]?.[selectedDate];
         let studentForAI = selectedStudent ? currentDataForAI.studentData?.students?.find(s => s.name === selectedStudent) : null;
         
+        // ⭐️ [변경] '반 전체/단원 매핑'은 FileProcessor가 처리하므로,
+        // ⭐️ 여기서는 '학생 개별 분석'만 확인합니다.
+        
+        // ⭐️ [변경] 단원 맵이 있는지 먼저 확인
+        if (!currentDataForAI.questionUnitMap) {
+             setErrorMessage("데이터에 '문항 단원 맵'이 없습니다. '처음으로' 돌아가 파일을 다시 업로드하여 AI 분석을 실행해주세요.");
+             setCurrentPage('page4'); // 이전 페이지로
+             setAiLoading(false);
+             return;
+        }
+
         const analysisPromises = [];
 
-        // ⭐️ AI 데이터가 없으면 API 호출 리스트에 추가
-        if (!currentDataForAI.aiOverallAnalysis) {
-            analysisPromises.push(
-                getOverallAIAnalysis(currentDataForAI) 
-                    .then(res => { if(res) { currentDataForAI.aiOverallAnalysis = res; dataWasUpdated = true; } })
-            );
-        }
-        if (!currentDataForAI.questionUnitMap) {
-            analysisPromises.push(
-                getQuestionUnitMapping(currentDataForAI)
-                    .then(res => { if(res) { currentDataForAI.questionUnitMap = res; dataWasUpdated = true; } })
-            );
-        }
+        // ⭐️ [변경] getOverallAIAnalysis 호출 제거
+        // ⭐️ [변경] getQuestionUnitMapping 호출 제거
+
+        // ⭐️ [변경] getAIAnalysis 호출 시 questionUnitMap 전달
         if (selectedStudent && studentForAI && studentForAI.submitted && !studentForAI.aiAnalysis) {
             analysisPromises.push(
-                getAIAnalysis(studentForAI, currentDataForAI, selectedClass) 
+                getAIAnalysis(studentForAI, currentDataForAI, selectedClass, currentDataForAI.questionUnitMap) 
                     .then(res => { if(res) { studentForAI.aiAnalysis = res; dataWasUpdated = true; } })
             );
         }
