@@ -223,11 +223,21 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
     const weaknessesContent = aiAnalysis ? aiAnalysis.weaknesses.replace(/\n/g, ' ') : '<div class="ai-spinner"></div>';
     const recommendationsContent = aiAnalysis ? aiAnalysis.recommendations.replace(/\n/g, ' ') : '<div class="ai-spinner"></div>';
     
+    // ⭐️⭐️⭐️ [사용자 요청] 페이지 분리 ⭐️⭐️⭐️
+
+    // 2-4a. 점수 차트 (1페이지용)
+    const scoreChartHtml = `
+        <div id="pdf-section-chart" class="card p-8 printable-section">
+            <h3 class="section-title">📊 ${student.name} 학생 점수 분포</h3>
+            <div class="w-full"><canvas id="scoreChart"></canvas></div>
+        </div>
+    `;
+
+    // 2-4b. AI 종합 분석 박스 (2페이지용)
+    // (이전 요청의 간격/패딩 축소를 원복하여 섹션 카드로 만듭니다)
     const aiAnalysisHtml = `
-        <div id="pdf-section-ai" class="card p-8 printable-section">
+        <div id="pdf-section-ai-boxes" class="card p-8 printable-section">
             <h3 class="section-title">🤖 ${student.name} 학생 AI 종합 분석</h3>
-            
-            <div class="w-full mb-8"><canvas id="scoreChart"></canvas></div>
             
             <div class="space-y-6">
                 <div class="p-6 rounded-lg bg-blue-50 border border-blue-200">
@@ -245,6 +255,7 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
             </div>
         </div>
     `;
+    // ⭐️⭐️⭐️ [수정 완료] ⭐️⭐️⭐️
 
     // 2-5. 단원 매핑 (AI 분석 결과 + 기본 맵)
     const unitMap = new Map();
@@ -327,7 +338,7 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
     `;
 
     // 2-8. HTML 조합
-    // (페이지네이션을 위해 report-page 클래스로 래핑 - App.jsx에서 관리)
+    // ⭐️⭐️⭐️ [사용자 요청] 페이지 재구성 ⭐️⭐️⭐️
     return `
         <div class="text-center my-4 print:hidden">
             <h2 class="text-3xl font-bold text-gray-800">${selectedClass} ${selectedDate}</h2>
@@ -337,20 +348,22 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
         <div class="report-page active" data-page-name="종합 분석">
             ${featuresHtml}
             ${commentHtml}
+            ${scoreChartHtml} {/* 1. 차트가 1페이지로 이동 */}
         </div>
         
         <div class="report-page" data-page-name="AI 분석">
-            ${aiAnalysisHtml}
+            ${aiAnalysisHtml} {/* 2. AI 박스가 2페이지로 이동 */}
         </div>
         
         <div class="report-page" data-page-name="문항 정오표">
-            ${errataHtml}
+            ${errataHtml} {/* 3. 정오표가 3페이지로 이동 */}
         </div>
 
         <div class="report-page" data-page-name="오답 분석">
-            ${solutionsHtml}
+            ${solutionsHtml} {/* 4. 오답 분석은 4페이지 */}
         </div>
     `;
+    // ⭐️⭐️⭐️ [수정 완료] ⭐️⭐️⭐️
 }
 
 

@@ -343,6 +343,7 @@ export const useChartAndPDF = () => {
                 canvas, 
                 data.studentData, 
                 currentStudentObj 
+                // ⭐️ 참고: 차트 내부 제목 변경은 reportUtils.js에서 해야 합니다.
             );
             if (chartInstanceRef.current) {
                 setActiveChart(chartInstanceRef.current);
@@ -470,35 +471,45 @@ export const useChartAndPDF = () => {
                 pdf.rect(15, yPos, 180, Math.max(30, textHeight), 'FD'); // 최소 높이 30mm
                 addWrappedText(pdf, commentText || '(입력된 코멘트가 없습니다)', yPos + 6, { x: 20, maxWidth: 170, color: [55, 65, 81] });
                 yPos += Math.max(30, textHeight) + 10;
-
-                // ⭐️ 페이지 2: AI 종합 분석 + 차트
-                pdf.addPage();
-                pdf.setFont('NotoSansKR', 'normal'); 
-                addPdfTitle(pdf, `${selectedDate} Weekly Test`, `${selectedClass} / ${student.name} (AI 분석)`);
-                yPos = addPdfSectionTitle(pdf, '🤖 AI 종합 분석', 40);
                 
-                // --- [수정] 2-1. 단일 시험 차트 추가 (타이틀 제거됨) ---
+                // ⭐️ [레이아웃 변경] 1페이지에 차트 추가
                 if (chartImgData) {
                     try {
+                        // [사용자 요청] 반 이름으로 타이틀 설정
+                        yPos = addPdfSectionTitle(pdf, '📊 ' + selectedClass + ' 점수 분포표', yPos);
+                        
                         const imgProps = pdf.getImageProperties(chartImgData);
                         const imgWidth = 180; 
                         let imgHeight = (imgProps.height * imgWidth) / imgProps.width;
                         imgHeight = Math.min(imgHeight, 100); 
 
                         const xOffset = (pdf.internal.pageSize.getWidth() - imgWidth) / 2;
-                        // [수정] "이번 시험 점수 분포" 타이틀 그리는 yPos = addPdfSectionTitle(...) 라인 제거
-                        pdf.addImage(chartImgData, 'PNG', xOffset, yPos, imgWidth, imgHeight, undefined, 'FAST');
+                        
+                        if (yPos + imgHeight > 280) { // 페이지 여백 확인
+                             pdf.addPage();
+                             yPos = 20;
+                        }
+                        
+                        // ⭐️⭐️⭐️ [오류 수정] 'PNG' -> undefined로 변경 ⭐️⭐️⭐️
+                        pdf.addImage(chartImgData, undefined, xOffset, yPos, imgWidth, imgHeight, undefined, 'FAST');
                         yPos += imgHeight + 10; 
                     } catch (e) {
-                        console.error("PDF addImage 오류 (scoreChart):", e);
-                        yPos = addWrappedText(pdf, '(단일 차트 로드 실패)', yPos, { color: [220, 38, 38] });
+                         console.error("PDF addImage 오류 (scoreChart Page 1):", e);
+                         yPos = addWrappedText(pdf, '(단일 차트 로드 실패)', yPos, { color: [220, 38, 38] });
                     }
                 } else {
-                    yPos = addWrappedText(pdf, '(차트 이미지를 캡처하는 데 실패했습니다.)', yPos, { color: [220, 38, 38] });
+                     yPos = addWrappedText(pdf, '(차트 이미지를 캡처하는 데 실패했습니다.)', yPos, { color: [220, 38, 38] });
                 }
 
-                // --- [수정] 2-2. 누적 성적 차트 추가 로직 전체 제거 ---
 
+                // ⭐️ 페이지 2: AI 종합 분석
+                pdf.addPage();
+                pdf.setFont('NotoSansKR', 'normal'); 
+                addPdfTitle(pdf, `${selectedDate} Weekly Test`, `${selectedClass} / ${student.name} (AI 분석)`);
+                yPos = addPdfSectionTitle(pdf, '🤖 AI 종합 분석', 40);
+                
+                // ⭐️ [레이아웃 변경] 2페이지의 차트 블록은 1페이지로 이동했으므로 제거됨
+                
                 if (yPos > 250) { 
                     pdf.addPage();
                     yPos = 20;
@@ -582,7 +593,7 @@ export const useChartAndPDF = () => {
                 }
                 
             } else {
-                // (반 전체 리포트 로직 - 기존과 동일)
+                // (반 전체 리포트 로직)
                 addPdfTitle(pdf, `${selectedClass} ${selectedDate} 주간테스트 리포트 (반 전체)`);
                 yPos = addPdfSectionTitle(pdf, '💡 반 전체 주요 특징', 40);
                 yPos = addFeaturesSection(pdf, data, yPos);
@@ -596,7 +607,9 @@ export const useChartAndPDF = () => {
                         imgHeight = Math.min(imgHeight, 100);
 
                         const xOffset = (pdf.internal.pageSize.getWidth() - imgWidth) / 2;
-                        pdf.addImage(chartImgData, 'PNG', xOffset, yPos, imgWidth, imgHeight, undefined, 'FAST');
+                        
+                        // ⭐️⭐️⭐️ [오류 수정] 'PNG' -> undefined로 변경 ⭐️⭐️⭐️
+                        pdf.addImage(chartImgData, undefined, xOffset, yPos, imgWidth, imgHeight, undefined, 'FAST');
                         yPos += imgHeight + 10;
                     } catch (e) {
                         console.error("PDF addImage/getImageProperties 오류:", e);
@@ -629,7 +642,7 @@ export const useChartAndPDF = () => {
                         head: [['문항번호', '세부 개념 유형 (AI)', '핵심 분석', '지도 방안']],
                         body: analysisBody,
                         theme: 'grid',
-                        // [유지] 폰트 크기 8pt, 셀 패딩 1.5
+                        // [유지] F폰트 크기 8pt, 셀 패딩 1.5
                         styles: { font: 'NotoSansKR', fontStyle: 'normal', fontSize: 8, cellPadding: 1.5 },
                         headStyles: { font: 'NotoSansKR', fontStyle: 'normal', fillColor: [248, 250, 252], textColor: [55, 65, 81], fontSize: 9 }, 
                         columnStyles: {
