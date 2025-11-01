@@ -7,7 +7,8 @@ function replaceAISpinner(html, aiContent) {
     if (typeof aiContent !== 'string' || aiContent.trim() === '') {
         return html.replace(/<div class="ai-spinner"><\/div>/g, '<p class="text-gray-500">(AI 분석 내용을 생성하지 못했습니다.)</p>');
     }
-    const formattedContent = aiContent.replace(/\n/g, '<br />');
+    // [수정] AI가 생성한 줄바꿈(\n)을 공백(' ')으로 변경하여 한 줄로 잇습니다.
+    const formattedContent = aiContent.replace(/\n/g, ' ');
     return html.replace(/<div class="ai-spinner"><\/div>/g, formattedContent);
 }
 
@@ -93,9 +94,10 @@ export function generateOverallReportHTML(data, aiOverallAnalysis, selectedClass
 
     // 1-2. AI 종합 분석 (차트 + 3개 분석)
     // aiOverallAnalysis가 로드되었는지 확인
-    const summaryContent = aiOverallAnalysis ? aiOverallAnalysis.summary : '<div class="ai-spinner"></div>';
-    const weaknessesContent = aiOverallAnalysis ? aiOverallAnalysis.common_weaknesses : '<div class="ai-spinner"></div>';
-    const recommendationsContent = aiOverallAnalysis ? aiOverallAnalysis.recommendations : '<div class="ai-spinner"></div>';
+    // [수정] .replace(/\n/g, ' ')를 추가하여 줄바꿈을 공백으로 변경
+    const summaryContent = aiOverallAnalysis ? aiOverallAnalysis.summary.replace(/\n/g, ' ') : '<div class="ai-spinner"></div>';
+    const weaknessesContent = aiOverallAnalysis ? aiOverallAnalysis.common_weaknesses.replace(/\n/g, ' ') : '<div class="ai-spinner"></div>';
+    const recommendationsContent = aiOverallAnalysis ? aiOverallAnalysis.recommendations.replace(/\n/g, ' ') : '<div class="ai-spinner"></div>';
 
     const aiAnalysisHtml = `
         <div id="pdf-section-ai-overall" class="card p-8 printable-section">
@@ -104,15 +106,15 @@ export function generateOverallReportHTML(data, aiOverallAnalysis, selectedClass
             <div class="space-y-6">
                 <div class="p-6 rounded-lg bg-gray-100 border border-gray-200">
                     <h4 class="font-bold text-lg text-gray-800 mb-2">📊 종합 총평</h4>
-                    <div class="text-gray-700 report-ai-content">${summaryContent}</div>
+                    <div class="text-gray-700 report-ai-content max-w-none">${summaryContent}</div>
                 </div>
                 <div class="p-6 rounded-lg bg-red-50 border-red-200">
                     <h4 class="font-bold text-lg text-red-800 mb-2">⚠️ 공통 약점 분석</h4>
-                    <div class="text-red-700 report-ai-content">${weaknessesContent}</div>
+                    <div class="text-red-700 report-ai-content max-w-none">${weaknessesContent}</div>
                 </div>
                 <div class="p-6 rounded-lg bg-green-50 border-green-200">
                     <h4 class="font-bold text-lg text-green-800 mb-2">🚀 수업 지도 방안</h4>
-                    <div class="text-green-700 report-ai-content">${recommendationsContent}</div>
+                    <div class="text-green-700 report-ai-content max-w-none">${recommendationsContent}</div>
                 </div>
             </div>
         </div>
@@ -216,26 +218,29 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
 
     // 2-4. AI 종합 분석 (차트 + 3개 분석)
     // aiAnalysis가 로드되었는지 확인
-    const strengthsContent = aiAnalysis ? aiAnalysis.strengths : '<div class="ai-spinner"></div>';
-    const weaknessesContent = aiAnalysis ? aiAnalysis.weaknesses : '<div class="ai-spinner"></div>';
-    const recommendationsContent = aiAnalysis ? aiAnalysis.recommendations : '<div class="ai-spinner"></div>';
+    // [수정] .replace(/\n/g, ' ')를 추가하여 줄바꿈을 공백으로 변경
+    const strengthsContent = aiAnalysis ? aiAnalysis.strengths.replace(/\n/g, ' ') : '<div class="ai-spinner"></div>';
+    const weaknessesContent = aiAnalysis ? aiAnalysis.weaknesses.replace(/\n/g, ' ') : '<div class="ai-spinner"></div>';
+    const recommendationsContent = aiAnalysis ? aiAnalysis.recommendations.replace(/\n/g, ' ') : '<div class="ai-spinner"></div>';
     
     const aiAnalysisHtml = `
         <div id="pdf-section-ai" class="card p-8 printable-section">
             <h3 class="section-title">🤖 ${student.name} 학생 AI 종합 분석</h3>
+            
             <div class="w-full mb-8"><canvas id="scoreChart"></canvas></div>
+            
             <div class="space-y-6">
                 <div class="p-6 rounded-lg bg-blue-50 border border-blue-200">
                     <h4 class="font-bold text-lg text-blue-800 mb-2">⭐ 강점 (Strengths)</h4>
-                    <div class="text-blue-700 report-ai-content">${strengthsContent}</div>
+                    <div class="text-blue-700 report-ai-content max-w-none">${strengthsContent}</div>
                 </div>
                 <div class="p-6 rounded-lg bg-red-50 border-red-200">
                     <h4 class="font-bold text-lg text-red-800 mb-2">⚠️ 약점 (Weaknesses)</h4>
-                    <div class="text-red-700 report-ai-content">${weaknessesContent}</div>
+                    <div class="text-red-700 report-ai-content max-w-none">${weaknessesContent}</div>
                 </div>
                 <div class="p-6 rounded-lg bg-green-50 border-green-200">
                     <h4 class="font-bold text-lg text-green-800 mb-2">🚀 학습 추천 (Recommendations)</h4>
-                    <div class="text-green-700 report-ai-content">${recommendationsContent}</div>
+                    <div class="text-green-700 report-ai-content max-w-none">${recommendationsContent}</div>
                 </div>
             </div>
         </div>
@@ -351,7 +356,7 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
 
 /**
  * ----------------------------------------------------------------
- * 3. 차트 렌더링
+ * 3. 차트 렌더링 (단일 시험용)
  * ----------------------------------------------------------------
  */
 export function renderScoreChart(canvas, studentData, currentStudent) {
@@ -446,6 +451,95 @@ export function renderScoreChart(canvas, studentData, currentStudent) {
                                 label = currentStudent ? context.label : sortedStudents[context.dataIndex].name;
                             }
                             
+                            if (context.parsed.y !== null) {
+                                label += `${context.parsed.y}점`;
+                            }
+                            return label;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+/**
+ * ----------------------------------------------------------------
+ * 4. [신규] 누적 성적 추이 차트 렌더링 (라인 차트)
+ * (이 함수는 '개별 리포트'에서 호출되지 않으며, '누적 리포트' 전용입니다.)
+ * ----------------------------------------------------------------
+ */
+export function renderCumulativeScoreChart(canvas, cumulativeData, studentName) {
+    if (!canvas) return null;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    // 데이터 포맷팅
+    const labels = cumulativeData.map(d => d.date); // X축 (날짜)
+    const studentScores = cumulativeData.map(d => d.studentScore); // Y축 (학생 점수)
+    const classAverages = cumulativeData.map(d => d.classAverage); // Y축 (반 평균)
+
+    return new Chart(ctx, {
+        type: 'line', // 차트 타입을 'line'으로 변경
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: `${studentName} 학생 점수`,
+                    data: studentScores,
+                    borderColor: 'rgba(59, 130, 246, 1)', // 'blue-500'
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    fill: false,
+                    tension: 0.1,
+                    borderWidth: 3,
+                }, 
+                {
+                    label: '반 평균',
+                    data: classAverages,
+                    borderColor: 'rgba(239, 68, 68, 1)', // 'red-500'
+                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                    fill: false,
+                    tension: 0.1,
+                    borderWidth: 2,
+                    borderDash: [5, 5], // 평균은 점선으로 표시
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            scales: { 
+                y: { 
+                    beginAtZero: true, 
+                    max: 100 
+                },
+                x: {
+                    ticks: {
+                        // 날짜가 너무 많으면 일부만 표시
+                        autoSkip: true,
+                        maxTicksLimit: 10 
+                    }
+                }
+            },
+            plugins: {
+                title: { 
+                    display: true, 
+                    text: `${studentName} 학생 성적 추이 (vs 반 평균)`, 
+                    font: { size: 16 } 
+                },
+                legend: { 
+                    position: 'bottom' 
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
                             if (context.parsed.y !== null) {
                                 label += `${context.parsed.y}점`;
                             }
