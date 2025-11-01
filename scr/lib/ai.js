@@ -1,7 +1,7 @@
 // scr/lib/ai.js 파일 내용 (실제 API 호출 코드로 변경됨)
 
-// ⭐️ 1. 환경 변수에서 API 키를 가져오고, 사용할 모델을 2.5 Flash로 지정
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+// ⭐️ 1. 환경 변수 대신 사용자가 제공한 새 API 키를 직접 사용
+const GEMINI_API_KEY = "AIzaSyCE4e23T5uHUg8HevbOV0Opl-upgUeIG-g";
 const GEMINI_MODEL = 'gemini-2.5-flash'; 
 
 function parseAIResponse(response) {
@@ -29,7 +29,8 @@ function parseAIResponse(response) {
 // ⭐️ 2. 실제 API 호출 함수 (stub 코드 대신 사용)
 async function callGeminiAPI(prompt) {
     if (!GEMINI_API_KEY) {
-         throw new Error("Gemini API 키가 설정되지 않았습니다. .env 파일을 확인하세요.");
+         // 이 오류는 이제 발생하지 않아야 합니다.
+         throw new Error("Gemini API 키가 설정되지 않았습니다.");
     }
     
     console.log(`[API Call] Model: ${GEMINI_MODEL}, Prompt length: ${prompt.length} chars`);
@@ -41,7 +42,8 @@ async function callGeminiAPI(prompt) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 contents: [{ role: "user", parts: [{ text: prompt }] }],
-                config: {
+                // 💥 수정: 'config'를 'generationConfig'로 변경하여 400 Bad Request 해결
+                generationConfig: { 
                     // API가 JSON 형식으로만 응답하도록 지시 (안정성 확보)
                     responseMimeType: "application/json", 
                     temperature: 0.1 

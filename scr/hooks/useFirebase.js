@@ -17,8 +17,8 @@ import { useReportContext } from '../context/ReportContext';
 // Firebase 설정
 // 🚨 이 키는 Firebase Console의 Web API Key와 일치해야 합니다. (spra-v1 auto created 키 적용)
 const REAL_FIREBASE_CONFIG = {
-  // 🔑 새로 발급받은 Firebase API 키 (Identity Toolkit 오류 해결용)
-  apiKey: "AIzaSyCSErXYEbjzXYBJay_9jhTR6Lcvm5aSVeY", 
+  // 🔑 새로 발급받은 API 키로 변경
+  apiKey: "AIzaSyCE4e23T5uHUg8HevbOV0Opl-upgUeIG-g", 
   authDomain: "spra-v1.firebaseapp.com",
   projectId: "spra-v1",
   storageBucket: "spra-v1.appspot.com",
