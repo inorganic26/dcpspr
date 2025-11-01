@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app'; // getApps, getApp import 추가
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
-// [수정] 누적 데이터 쿼리에 필요한 함수들 import 추가
 import { 
     getFirestore, 
     doc, 
@@ -16,8 +15,10 @@ import {
 import { useReportContext } from '../context/ReportContext';
 
 // Firebase 설정
+// 🚨 이 키는 Firebase Console의 Web API Key와 일치해야 합니다. (spra-v1 auto created 키 적용)
 const REAL_FIREBASE_CONFIG = {
-  apiKey: "AIzaSyDVLes7sjhRfUgsW2bw1_Sco5ZBx--pudQ",
+  // 🔑 새로 발급받은 Firebase API 키 (Identity Toolkit 오류 해결용)
+  apiKey: "AIzaSyCSErXYEbjzXYBJay_9jhTR6Lcvm5aSVeY", 
   authDomain: "spra-v1.firebaseapp.com",
   projectId: "spra-v1",
   storageBucket: "spra-v1.appspot.com",
@@ -30,7 +31,6 @@ const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial
 
 const getReportDocRef = (db, auth, userId) => {
     if (!userId) return null;
-    // ⚠️ 참고: 현재 모든 데이터를 이 단일 문서에 저장하고 있습니다.
     return doc(db, `artifacts/${appId}/users/${userId}/reports/allData`);
 };
 
@@ -42,7 +42,7 @@ export const useFirebase = () => {
     const [dbRef, setDbRef] = useState(null);
     const [authError, setAuthError] = useState(null);
 
-    // 데이터 저장 (⚠️ 현재 누적 데이터와 호환되지 않는 방식)
+    // 데이터 저장 함수 (기존 로직 유지)
     const saveDataToFirestore = useCallback(async (data) => {
         if (!dbRef) throw new Error("Firestore not initialized for saving.");
         
@@ -59,11 +59,10 @@ export const useFirebase = () => {
             return str;
         };
         const dataToSave = JSON.parse(simpleStringify(data));
-        // 'allData' 문서에 모든 데이터를 덮어쓰기합니다.
         await setDoc(dbRef, { reportData: dataToSave });
     }, [dbRef]);
 
-    // 데이터 로드
+    // 데이터 로드 함수 (기존 로직 유지)
     const loadDataFromFirestore = useCallback(async (docRef) => {
         if (!docRef) { 
             setInitialLoading(false);
@@ -85,12 +84,7 @@ export const useFirebase = () => {
         }
     }, [setTestData, setInitialLoading, setErrorMessage]);
 
-    /**
-     * ----------------------------------------------------------------
-     * [신규] 특정 학생의 누적 성적 데이터 Fetching 함수
-     * ----------------------------------------------------------------
-     * ⚠️ 'db' 인스턴스에 의존하므로 hook 내부에 정의되고 반환되어야 합니다.
-     */
+    // 누적 성적 데이터 Fetching 함수 (기존 로직 유지)
     const fetchCumulativeData = useCallback(async (studentId) => {
         if (!db) {
             console.error("Firestore DB is not initialized.");
@@ -129,12 +123,14 @@ export const useFirebase = () => {
             console.error("Error fetching cumulative data: ", error);
             return [];
         }
-    }, [db]); // 'db' state가 초기화된 후에 함수가 올바르게 작동하도록 의존성 배열에 추가
+    }, [db]);
 
     // Firebase 초기화 및 인증 Effect
     useEffect(() => {
         try {
-            const app = initializeApp(firebaseConfig);
+            // ⭐️ 안전한 초기화: 이미 초기화된 앱이 있다면 그것을 사용
+            const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+            
             const firestoreDb = getFirestore(app);
             const firebaseAuth = getAuth(app);
             setDb(firestoreDb);
@@ -157,6 +153,11 @@ export const useFirebase = () => {
                     } catch (error) {
                         setAuthError(error.message);
                         setInitialLoading(false);
+                        if (error.code === 'auth/network-request-failed' || error.message.includes('400')) {
+                             console.error(`[FATAL FIREBASE ERROR] ${error.message}. 
+                             Key Mismatch or API Restriction is the most likely cause. 
+                             Check the key in REAL_FIREBASE_CONFIG against the Web API Key in Firebase Console.`);
+                        }
                     }
                 }
             });
@@ -167,7 +168,6 @@ export const useFirebase = () => {
         }
     }, [loadDataFromFirestore, setInitialLoading]); 
 
-    // [수정] fetchCumulativeData 함수를 반환 객체에 추가
     return { 
         db, 
         auth, 
@@ -175,6 +175,6 @@ export const useFirebase = () => {
         dbRef, 
         authError, 
         saveDataToFirestore,
-        fetchCumulativeData // ⬅️ [신규] 누적 데이터 함수 추가
+        fetchCumulativeData
     };
 };
