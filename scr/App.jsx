@@ -1,20 +1,22 @@
+// scr/App.jsx
+
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 
 // 1. Context와 훅들 임포트
 import { useReportContext } from './context/ReportContext';
 import { useFirebase } from './hooks/useFirebase';
-// ⭐️ [변경] handleFileDrop을 가져오기 위해 useFileProcessor를 수정해야 합니다.
 import { useFileProcessor } from './hooks/useFileProcessor';
 import { useReportGenerator } from './hooks/useReportGenerator';
 import { useChartAndPDF } from './hooks/useChartAndPDF';
 import { usePagination } from './hooks/usePagination';
 import { useReportNavigation } from './hooks/useReportNavigation';
 
-// 2. 아이콘 임포트 (⭐️ TriangleAlert를 Page1에서 App 최상단으로 이동)
+// 2. 아이콘 임포트
 import { Home, ArrowLeft, UploadCloud, FileText, Loader, TriangleAlert, Save, PlusCircle, CalendarDays } from 'lucide-react';
 
 // 3. 오늘 날짜를 "M월 D일" 형식으로 반환하는 헬퍼 함수
 const getTodayDateString = () => {
+    // ... (내용 동일) ...
     const today = new Date();
     const month = today.getMonth() + 1;
     const day = today.getDate();
@@ -22,47 +24,34 @@ const getTodayDateString = () => {
 };
 
 // --- 4. 페이지별 컴포넌트 ---
-
-// ⭐️ [변경] handleFileDrop을 인자로 추가
+// ... (Page1_Upload, Page2_ClassSelect, Page3_DateSelect, Page4_ReportSelect, Page5_ReportDisplay 컴포넌트 코드는 기존과 동일) ...
 const Page1_Upload = ({ authError, handleFileChange, handleFileProcess, fileInputRef, selectedFiles, handleFileDrop }) => {
-    // ⭐️⭐️⭐️ 변경된 부분 (Context에서 testData, setSelectedDate, setErrorMessage 가져오기) ⭐️⭐️⭐️
+    // ... (내용 동일) ...
     const { 
         processing, errorMessage, uploadDate, setUploadDate, showPage, 
         testData, setSelectedDate, setErrorMessage 
     } = useReportContext();
-    // ⭐️⭐️⭐️ 변경 완료 ⭐️⭐️⭐️
-    
-    // ⭐️ [추가] 드래그 상태를 위한 상태
     const [isDragging, setIsDragging] = useState(false); 
-
-    // ⭐️ [추가] 드래그 앤 드롭 이벤트 핸들러
     const handleDragOver = (e) => {
-        e.preventDefault(); // 필수: 드롭이 가능하도록 허용
+        e.preventDefault(); 
         e.stopPropagation();
         if (!isDragging) setIsDragging(true);
     };
-
     const handleDragLeave = (e) => {
         e.preventDefault();
         e.stopPropagation();
         setIsDragging(false); 
     };
-
     const handleDrop = (e) => {
         e.preventDefault();
         e.stopPropagation();
         setIsDragging(false);
-
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            handleFileDrop(e.dataTransfer.files); // useFileProcessor의 드롭 핸들러 호출
+            handleFileDrop(e.dataTransfer.files); 
             e.dataTransfer.clearData();
         }
     };
-    // ⭐️ [추가] 드래그 앤 드롭 이벤트 핸들러 종료
-
-    // --- 날짜 변환 로직 ---
     const getTodayISO = () => new Date().toISOString().split('T')[0];
-
     const formatISOToMMDD = (isoStr) => {
         if (!isoStr) return "";
         try {
@@ -70,7 +59,6 @@ const Page1_Upload = ({ authError, handleFileChange, handleFileProcess, fileInpu
             return `${parseInt(month, 10)}월 ${parseInt(day, 10)}일`;
         } catch (e) { return ""; }
     };
-
     const formatMMDDToISO = (mmddStr) => {
         if (!mmddStr) return getTodayISO();
         const match = mmddStr.match(/(\d+)월 (\d+)일/);
@@ -82,9 +70,7 @@ const Page1_Upload = ({ authError, handleFileChange, handleFileProcess, fileInpu
         }
         return getTodayISO();
     };
-
     const [isoDate, setIsoDate] = useState(() => formatMMDDToISO(uploadDate));
-
     useEffect(() => {
         if (!uploadDate) {
             const todayISO = getTodayISO();
@@ -92,21 +78,16 @@ const Page1_Upload = ({ authError, handleFileChange, handleFileProcess, fileInpu
             setUploadDate(formatISOToMMDD(todayISO));
         }
     }, [uploadDate, setUploadDate]);
-
     const handleDateChange = (e) => {
         const newIsoDate = e.target.value;
         setIsoDate(newIsoDate); 
         setUploadDate(formatISOToMMDD(newIsoDate)); 
     };
-    // --- 날짜 변환 로직 종료 ---
-
-    // ⭐️⭐️⭐️ 추가된 부분 (선택한 날짜로 조회하는 핸들러) ⭐️⭐️⭐️
     const handleViewExistingByDate = () => {
         if (!uploadDate) {
             setErrorMessage('먼저 조회할 날짜를 선택해주세요.');
             return;
         }
-
         const allDates = new Set();
         if (testData && typeof testData === 'object') {
             Object.values(testData).forEach(classData => {
@@ -117,21 +98,17 @@ const Page1_Upload = ({ authError, handleFileChange, handleFileProcess, fileInpu
                 }
             });
         }
-        
         if (allDates.has(uploadDate)) {
-            setErrorMessage(''); // 오류 메시지 초기화
+            setErrorMessage(''); 
             setSelectedDate(uploadDate);
-            showPage('page2'); // "반 선택" 페이지로 이동
+            showPage('page2'); 
         } else {
             setErrorMessage(`'${uploadDate}'에 해당하는 분석된 리포트가 없습니다. \n다른 날짜를 선택하거나 '모든 날짜 보기'를 클릭하세요.`);
         }
     };
-    // ⭐️⭐️⭐️ 추가 완료 ⭐️⭐️⭐️
-
     return (
         <div id="fileUploadCard" className="card">
             <h2 className="text-2xl font-bold text-center mb-6 text-gray-700">AI 성적 리포트 분석기</h2>
-            
             <div className="mb-4">
                 <label htmlFor="dateInput" className="block text-sm font-medium text-gray-700 mb-1">
                     시험 날짜 (필수)
@@ -146,10 +123,7 @@ const Page1_Upload = ({ authError, handleFileChange, handleFileProcess, fileInpu
                     />
                 </div>
             </div>
-
             <p className="text-center text-gray-600 mb-6">분석할 PDF 시험지 파일과 학생 성적 데이터(CSV 또는 XLSX)를 함께 업로드해주세요. (파일 이름에 **반 이름**이 포함되어야 합니다)</p>
-            
-            {/* ⭐️ [변경] 드래그 앤 드롭 영역 추가 및 스타일 적용 */}
             <div 
                 className={`p-6 border-2 border-dashed rounded-xl transition-colors mb-4 ${
                     isDragging ? 'border-indigo-500 bg-indigo-50' : 'border-gray-300 hover:border-gray-400'
@@ -164,15 +138,12 @@ const Page1_Upload = ({ authError, handleFileChange, handleFileProcess, fileInpu
                     <p className={`text-lg font-semibold transition-colors ${isDragging ? 'text-indigo-600' : 'text-gray-500'}`}>
                         파일을 여기에 드래그하거나
                     </p>
-                    
                     <label htmlFor="fileInput" className="btn btn-primary cursor-pointer max-w-xs">
                         <span>파일 선택하기</span>
                     </label>
                     <input type="file" id="fileInput" ref={fileInputRef} className="hidden" multiple accept=".pdf,.csv,.xlsx" onChange={handleFileChange} />
                 </div>
             </div>
-            {/* ⭐️ [변경] 드래그 앤 드롭 영역 종료 */}
-
             {selectedFiles.length > 0 && (
                 <div id="fileListContainer" className="mb-4">
                     <h4 className="font-semibold mb-2 text-gray-600">선택된 파일:</h4>
@@ -181,8 +152,6 @@ const Page1_Upload = ({ authError, handleFileChange, handleFileProcess, fileInpu
                     </ul>
                 </div>
             )}
-
-            {/* ⭐️ [수정] Page1의 오류 메시지는 전역 오류 메시지로 대체되므로, 여기서는 authError만 처리합니다. */}
             {errorMessage && (
                 <div id="error-message" className="text-red-600 bg-red-100 p-3 rounded-lg mb-4 text-sm"
                     dangerouslySetInnerHTML={{ __html: errorMessage.replace(/\n/g, '<br>') }} />
@@ -193,13 +162,10 @@ const Page1_Upload = ({ authError, handleFileChange, handleFileProcess, fileInpu
                     Firebase 인증 오류: {authError}
                 </div>
             )}
-
             <button id="processBtn" className="btn btn-primary w-full text-lg" disabled={processing || selectedFiles.length === 0} onClick={handleFileProcess}>
                 {processing && <span id="loader" className="spinner" style={{ borderColor: 'white', borderBottomColor: 'transparent', width: '20px', height: '20px', marginRight: '8px' }}></span>}
                 <span>{processing ? '분석 중...' : '분석 시작하기'}</span>
             </button>
-
-            {/* ⭐️⭐️⭐️ 변경된 부분 (버튼 2개로 분리) ⭐️⭐️⭐️ */}
             <div className="grid grid-cols-2 gap-4 mt-4">
                 <button 
                     className="btn btn-primary w-full text-md" 
@@ -212,7 +178,7 @@ const Page1_Upload = ({ authError, handleFileChange, handleFileProcess, fileInpu
                 <button 
                     className="btn btn-secondary w-full text-md" 
                     onClick={() => {
-                        setErrorMessage(''); // 오류 메시지 초기화
+                        setErrorMessage(''); 
                         showPage('page3');
                     }}
                     disabled={processing}
@@ -220,18 +186,16 @@ const Page1_Upload = ({ authError, handleFileChange, handleFileProcess, fileInpu
                     모든 날짜 보기
                 </button>
             </div>
-            {/* ⭐️⭐️⭐️ 변경 완료 ⭐️⭐️⭐️ */}
         </div>
     );
 };
 
 const Page2_ClassSelect = () => {
+    // ... (내용 동일) ...
     const { testData, selectedDate, setSelectedClass, showPage } = useReportContext();
-
     const classesForDate = Object.keys(testData).filter(className => 
         testData[className] && testData[className][selectedDate]
     );
-
     return (
         <div className="card">
             <h2 className="text-2xl font-bold text-center mb-6">{selectedDate} - 반 선택</h2>
@@ -260,8 +224,8 @@ const Page2_ClassSelect = () => {
 };
 
 const Page3_DateSelect = () => {
+    // ... (내용 동일) ...
     const { testData, setSelectedDate, showPage } = useReportContext();
-
     const allDates = new Set();
     Object.values(testData).forEach(classData => {
         Object.keys(classData).forEach(date => {
@@ -269,11 +233,9 @@ const Page3_DateSelect = () => {
         });
     });
     const uniqueDates = Array.from(allDates);
-
     return (
         <div className="card">
             <h2 className="text-2xl font-bold text-center mb-6 text-gray-700">시험 날짜 선택</h2>
-           
             <div id="dateButtons" className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {uniqueDates.length > 0 ? (
                     uniqueDates.map(date => (
@@ -299,8 +261,8 @@ const Page3_DateSelect = () => {
     );
 };
 
-
 const Page4_ReportSelect = () => {
+    // ... (내용 동일) ...
     const { testData, selectedClass, selectedDate, selectedStudent, setSelectedStudent, showPage } = useReportContext();
     return (
         <div className="card">
@@ -333,9 +295,9 @@ const Page4_ReportSelect = () => {
 };
 
 const Page5_ReportDisplay = () => {
+    // ... (내용 동일) ...
     const { reportHTML } = useReportContext();
     const reportContentRef = usePagination(); 
-
     return (
         <div 
             id="reportContainer" 
@@ -346,7 +308,6 @@ const Page5_ReportDisplay = () => {
                 className="space-y-6"
                 dangerouslySetInnerHTML={{ __html: reportHTML }} 
             />
-            
             <div id="pagination-controls" className="flex justify-center items-center space-x-4 mt-4 print:hidden" style={{ display: 'none' }}>
                 <button id="prevPageBtn" className="btn btn-secondary">&lt; 이전</button>
                 <span id="pageIndicator">1 / 3</span>
@@ -362,24 +323,46 @@ const App = () => {
     const {
         currentPage, selectedClass, selectedDate, selectedStudent,
         initialLoading, authError,
-        // ⭐️ [수정] 전역 오류 메시지 상태를 가져옵니다.
         errorMessage, setErrorMessage
     } = useReportContext();
     
     const { saveDataToFirestore } = useFirebase();
-    // ⭐️ [변경] handleFileDrop을 가져옵니다.
     const { fileInputRef, selectedFiles, handleFileChange, handleFileProcess, handleFileDrop } = useFileProcessor({ saveDataToFirestore });
     const { goBack, goHome } = useReportNavigation();
     
     useReportGenerator({ saveDataToFirestore }); 
-    // ⭐️ [수정] useChartAndPDF가 handlePdfSave 함수를 반환하도록 변경
     const { handlePdfSave } = useChartAndPDF(); 
     
+    // ⭐️⭐️⭐️ [방안 3 적용] ⭐️⭐️⭐️
+    // 네트워크 상태 모니터링
+    useEffect(() => {
+        const handleOnline = () => {
+            console.log("네트워크 연결됨");
+            setErrorMessage(''); // 오류 메시지 초기화
+        };
+        
+        const handleOffline = () => {
+            console.log("네트워크 끊김");
+            // ⭐️ 참고: 이 메시지는 전역 오류 메시지 (팝업)로 표시됩니다.
+            setErrorMessage("인터넷 연결이 끊어졌습니다. 온라인 상태를 확인해주세요.");
+        };
+        
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+        
+        // 컴포넌트 언마운트 시 리스너 제거
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, [setErrorMessage]); // 의존성 배열에 setErrorMessage 추가
+    // ⭐️⭐️⭐️ [방안 3 적용 완료] ⭐️⭐️⭐️
+
     // --- 렌더링 로직 ---
     
     const renderNav = () => {
+        // ... (내용 동일) ...
         if (currentPage === 'page1') return null;
-        
         return (
             <nav id="navigation" className="fixed top-0 left-0 right-0 bg-white shadow-md p-4 z-10 flex items-center h-16 print:hidden">
                 <div className="container mx-auto max-w-5xl flex justify-between items-center">
@@ -405,7 +388,6 @@ const App = () => {
                                 data-report-type={selectedStudent ? 'individual' : 'overall'}
                                 data-student-name={selectedStudent || ''}
                                 className="btn btn-secondary btn-sm"
-                                // ⭐️ [수정] onClick 핸들러를 직접 연결합니다.
                                 onClick={handlePdfSave}
                             >
                                 <FileText size={16} className="mr-2" /> PDF로 저장
@@ -418,6 +400,7 @@ const App = () => {
     };
 
     const renderPage = () => {
+        // ... (내용 동일) ...
         if (initialLoading) {
             return (
                 <div id="initialLoader" className="card p-8 text-center">
@@ -426,25 +409,23 @@ const App = () => {
                 </div>
             );
         }
-
         switch (currentPage) {
-            case 'page1': // 파일 업로드 (시작 페이지)
+            case 'page1': 
                 return <Page1_Upload 
                             authError={authError}
                             handleFileChange={handleFileChange}
                             handleFileProcess={handleFileProcess}
                             fileInputRef={fileInputRef}
                             selectedFiles={selectedFiles} 
-                            // ⭐️ [변경] handleFileDrop 추가
                             handleFileDrop={handleFileDrop}
                         />;
-            case 'page2': // 반 선택
+            case 'page2': 
                 return <Page2_ClassSelect />;
-            case 'page3': // 날짜 선택
+            case 'page3': 
                 return <Page3_DateSelect />;
-            case 'page4': // 학생 선택
+            case 'page4': 
                 return <Page4_ReportSelect />;
-            case 'page5': // 리포트 보기
+            case 'page5': 
                 return <Page5_ReportDisplay />;
             default:
                 return <Page1_Upload 
@@ -453,20 +434,17 @@ const App = () => {
                             handleFileProcess={handleFileProcess}
                             fileInputRef={fileInputRef}
                             selectedFiles={selectedFiles} 
-                            // ⭐️ [변경] handleFileDrop 추가
                             handleFileDrop={handleFileDrop}
                         />;
         }
     };
 
-    // ⭐️ [추가] 전역 오류 메시지를 렌더링하는 함수
     const renderGlobalError = () => {
-        if (!errorMessage || currentPage === 'page1') return null; // page1은 자체 오류 메시지 사용
-        
+        // ... (내용 동일) ...
+        if (!errorMessage || currentPage === 'page1') return null; 
         return (
             <div 
                 id="global-error-message" 
-                // (토스트 팝업 스타일)
                 className="fixed bottom-4 right-4 bg-red-600 text-white p-4 rounded-lg shadow-lg z-50 max-w-sm animate-pulse"
                 style={{ animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite' }}
             >
@@ -487,7 +465,7 @@ const App = () => {
     return (
         <div className="container mx-auto p-4 max-w-5xl">
             {renderNav()}
-            {renderGlobalError()} {/* ⭐️ [추가] 전역 오류 렌더링 */}
+            {renderGlobalError()} 
             <main className={currentPage !== 'page1' ? 'mt-16 pt-8' : ''}>
                 {renderPage()}
             </main>

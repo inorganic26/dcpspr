@@ -1,180 +1,119 @@
-import { useState, useEffect, useCallback } from 'react';
-import { initializeApp, getApps, getApp } from 'firebase/app'; // getApps, getApp import 추가
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+// scr/hooks/useFirebase.js
+
+import { useEffect } from 'react';
+import { initializeApp } from "firebase/app";
 import { 
-    getFirestore, 
-    doc, 
-    getDoc, 
-    setDoc, 
-    collectionGroup, 
-    query, 
-    where, 
-    orderBy, 
-    getDocs 
-} from 'firebase/firestore';
+    // ⭐️ [수정] 표준 getFirestore를 다시 사용합니다.
+    getFirestore, doc, setDoc, getDoc
+    // ⭐️ 'initializeFirestore'와 'memoryLocalCache'는 사용하지 않습니다.
+} from "firebase/firestore";
+import { 
+    getAuth, signInAnonymously, onAuthStateChanged 
+} from "firebase/auth";
 import { useReportContext } from '../context/ReportContext';
 
-// Firebase 설정
-// 🚨 이 키는 Firebase Console의 Web API Key와 일치해야 합니다. (spra-v1 auto created 키 적용)
-const REAL_FIREBASE_CONFIG = {
-  // 🔑 새로 발급받은 API 키로 변경
-  apiKey: "AIzaSyCE4e23T5uHUg8HevbOV0Opl-upgUeIG-g", 
-  authDomain: "spra-v1.firebaseapp.com",
-  projectId: "spra-v1",
-  storageBucket: "spra-v1.appspot.com",
-  messagingSenderId: "735477807243",
-  appId: "1:735477807243:web:6c7fdd347a498780997c8e"
+// Firebase 설정 객체 (기존과 동일)
+const firebaseConfig = {
+    apiKey: "AIzaSyCE4e23T5uHUg8HevbOV0Opl-upgUeIG-g",
+    authDomain: "dcpspr-b088f.firebaseapp.com",
+    databaseURL: "https://dcpspr-b088f-default-rtdb.firebaseio.com",
+    projectId: "dcpspr-b088f",
+    storageBucket: "dcpspr-b088f.appspot.com",
+    messagingSenderId: "1001893335270",
+    appId: "1:1001893335270:web:1669430c6c5477c77f02a0",
+    measurementId: "G-5GM7206103"
 };
-const appId = REAL_FIREBASE_CONFIG.appId;
-const firebaseConfig = REAL_FIREBASE_CONFIG;
-const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : undefined;
 
-const getReportDocRef = (db, auth, userId) => {
-    if (!userId) return null;
-    return doc(db, `artifacts/${appId}/users/${userId}/reports/allData`);
-};
+const app = initializeApp(firebaseConfig);
+
+// ⭐️ [수정] '400 Bad Request' 오류를 수정하기 위해 
+// ⭐️ 표준 초기화로 되돌립니다.
+const db = getFirestore(app);
+// --------------------------------------------------
+
+const auth = getAuth(app);
+const dataDocRef = doc(db, "reports", "allTestData");
 
 export const useFirebase = () => {
-    const { setTestData, setCurrentPage, setInitialLoading, setErrorMessage } = useReportContext();
-    const [db, setDb] = useState(null);
-    const [auth, setAuth] = useState(null);
-    const [userId, setUserId] = useState(null);
-    const [dbRef, setDbRef] = useState(null);
-    const [authError, setAuthError] = useState(null);
+    const { 
+        setTestData, setInitialLoading, 
+        setAuthError 
+    } = useReportContext();
 
-    // 데이터 저장 함수 (기존 로직 유지)
-    const saveDataToFirestore = useCallback(async (data) => {
-        if (!dbRef) throw new Error("Firestore not initialized for saving.");
-        
-        const simpleStringify = (obj) => {
-            let cache = new Set();
-            let str = JSON.stringify(obj, (key, value) => {
-                if (typeof value === 'object' && value !== null) {
-                    if (cache.has(value)) return;
-                    cache.add(value);
-                }
-                return value;
-            });
-            cache = null; 
-            return str;
-        };
-        const dataToSave = JSON.parse(simpleStringify(data));
-        await setDoc(dbRef, { reportData: dataToSave });
-    }, [dbRef]);
-
-    // 데이터 로드 함수 (기존 로직 유지)
-    const loadDataFromFirestore = useCallback(async (docRef) => {
-        if (!docRef) { 
-            setInitialLoading(false);
-            return;
-        }
-        try {
-            const docSnap = await getDoc(docRef);
-            if (docSnap.exists()) {
-                const loaded = docSnap.data().reportData;
-                if (loaded && typeof loaded === 'object' && Object.keys(loaded).length > 0) {
-                    setTestData(loaded);
+    // 익명 로그인 및 데이터 로드 로직
+    useEffect(() => {
+        setInitialLoading(true);
+        const unsubscribe = onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                console.log("Firebase: 인증 성공 (익명)", user.uid);
+                setAuthError(null); 
+                await loadDataFromFirestore();
+            } else {
+                console.log("Firebase: 인증 시도 (익명)...");
+                try {
+                    await signInAnonymously(auth);
+                } catch (error) {
+                    console.error("Firebase: 익명 로그인 실패", error);
+                    setAuthError(error.message); 
+                    setInitialLoading(false); 
                 }
             }
+        });
+        return () => unsubscribe();
+    }, [setAuthError, setInitialLoading]);
+
+    // loadDataFromFirestore 함수 (방안 2의 오류 처리 로직 유지)
+    const loadDataFromFirestore = async () => {
+        try {
+            if (!navigator.onLine) {
+                console.warn("Firebase: 오프라인 상태입니다.");
+                setAuthError("현재 오프라인 상태입니다. 인터넷 연결을 확인해주세요.");
+            }
+
+            // ⭐️ 이제 이 getDoc이 'permission-denied' 오류를 정확히 반환할 것입니다.
+            const docSnap = await getDoc(dataDocRef);
+            
+            if (docSnap.exists()) {
+                setTestData(docSnap.data() || {});
+                console.log("Firebase: 데이터 로드 성공");
+                setAuthError(null); 
+            } else {
+                console.log("Firebase: 문서 없음. 새 데이터로 시작.");
+                setTestData({});
+                setAuthError(null); 
+            }
         } catch (error) {
-            console.error("Error loading data from Firestore:", error);
-            setErrorMessage("데이터 로드 중 오류 발생: " + error.message);
+            console.error("Firebase: 데이터 로드 실패", error);
+            
+            if (error.code === 'unavailable' || error.message.includes('offline')) {
+                setAuthError("네트워크 연결이 불안정합니다. 잠시 후 다시 시도해주세요.");
+            } else if (error.code === 'permission-denied') {
+                // ⭐️⭐️⭐️ 진짜 오류가 여기에 잡힐 것입니다. ⭐️⭐️⭐️
+                setAuthError("데이터 접근 권한이 없습니다. (방안 1: Firestore 보안 규칙을 확인해주세요.)");
+            } else {
+                setAuthError("데이터 로드 중 오류 발생: " + error.message);
+            }
+            
+            setTestData({});
         } finally {
             setInitialLoading(false);
         }
-    }, [setTestData, setInitialLoading, setErrorMessage]);
-
-    // 누적 성적 데이터 Fetching 함수 (기존 로직 유지)
-    const fetchCumulativeData = useCallback(async (studentId) => {
-        if (!db) {
-            console.error("Firestore DB is not initialized.");
-            return [];
-        }
-        if (!studentId) {
-            console.error("Student ID is required to fetch cumulative data.");
-            return [];
-        }
-        
-        console.log(`Fetching cumulative data for student: ${studentId}`);
-        
-        const reportsQuery = query(
-            collectionGroup(db, 'reports'), 
-            where('studentId', '==', studentId), 
-            orderBy('date', 'asc') 
-        );
-    
-        try {
-            const querySnapshot = await getDocs(reportsQuery);
-            const cumulativeData = [];
-            querySnapshot.forEach(doc => {
-                const data = doc.data();
-                if (data.date && data.score != null && data.classAverage != null) {
-                    cumulativeData.push({
-                        date: data.date, 
-                        studentScore: data.score,
-                        classAverage: data.classAverage
-                    });
-                }
-            });
-            console.log("Fetched cumulative data:", cumulativeData);
-            return cumulativeData;
-    
-        } catch (error) {
-            console.error("Error fetching cumulative data: ", error);
-            return [];
-        }
-    }, [db]);
-
-    // Firebase 초기화 및 인증 Effect
-    useEffect(() => {
-        try {
-            // ⭐️ 안전한 초기화: 이미 초기화된 앱이 있다면 그것을 사용
-            const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-            
-            const firestoreDb = getFirestore(app);
-            const firebaseAuth = getAuth(app);
-            setDb(firestoreDb);
-            setAuth(firebaseAuth);
-
-            const unsubscribe = onAuthStateChanged(firebaseAuth, async (user) => {
-                if (user) {
-                    setUserId(user.uid);
-                    const newDbRef = getReportDocRef(firestoreDb, firebaseAuth, user.uid);
-                    setDbRef(newDbRef);
-                    await loadDataFromFirestore(newDbRef); 
-                } else {
-                    setInitialLoading(true); 
-                    try {
-                        if (initialAuthToken) {
-                            await signInWithCustomToken(firebaseAuth, initialAuthToken);
-                        } else {
-                            await signInAnonymously(firebaseAuth);
-                        }
-                    } catch (error) {
-                        setAuthError(error.message);
-                        setInitialLoading(false);
-                        if (error.code === 'auth/network-request-failed' || error.message.includes('400')) {
-                             console.error(`[FATAL FIREBASE ERROR] ${error.message}. 
-                             Key Mismatch or API Restriction is the most likely cause. 
-                             Check the key in REAL_FIREBASE_CONFIG against the Web API Key in Firebase Console.`);
-                        }
-                    }
-                }
-            });
-            return () => unsubscribe();
-        } catch (e) {
-            setAuthError(e.message);
-            setInitialLoading(false);
-        }
-    }, [loadDataFromFirestore, setInitialLoading]); 
-
-    return { 
-        db, 
-        auth, 
-        userId, 
-        dbRef, 
-        authError, 
-        saveDataToFirestore,
-        fetchCumulativeData
     };
+
+    // 데이터 저장 함수 (기존과 동일)
+    const saveDataToFirestore = async (data) => {
+        if (!auth.currentUser) {
+            console.error("Firebase: 인증되지 않아 저장할 수 없습니다.");
+            throw new Error("Firebase 인증이 필요합니다.");
+        }
+        try {
+            await setDoc(dataDocRef, data, { merge: true }); 
+            console.log("Firebase: 데이터 저장 성공");
+        } catch (error) {
+            console.error("Firebase: 데이터 저장 실패", error);
+            throw error;
+        }
+    };
+
+    return { saveDataToFirestore, loadDataFromFirestore };
 };

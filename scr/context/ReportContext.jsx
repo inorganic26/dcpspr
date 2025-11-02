@@ -1,3 +1,5 @@
+// scr/context/ReportContext.jsx
+
 import React, { createContext, useState, useContext, useMemo } from 'react';
 
 const ReportContext = createContext();
@@ -19,6 +21,11 @@ export const ReportProvider = ({ children }) => {
     const [aiLoading, setAiLoading] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
     
+    // ⭐️⭐️⭐️ [추가된 부분] ⭐️⭐️⭐️
+    // App.jsx와 useFirebase.js에서 사용할 인증 오류 상태
+    const [authError, setAuthError] = useState(null); 
+    // ⭐️⭐️⭐️ [추가 완료] ⭐️⭐️⭐️
+
     // 리포트/차트 상태
     const [reportHTML, setReportHTML] = useState('');
     const [activeChart, setActiveChart] = useState(null);
@@ -26,8 +33,6 @@ export const ReportProvider = ({ children }) => {
 
     const showPage = (page) => setCurrentPage(page);
 
-    // ⭐️⭐️⭐️ 변경된 부분 ⭐️⭐️⭐️
-    // useMemo의 의존성 배열에서 모든 set- 함수들을 제거합니다.
     const value = useMemo(() => ({
         testData, setTestData,
         currentPage, setCurrentPage, showPage,
@@ -36,6 +41,11 @@ export const ReportProvider = ({ children }) => {
         selectedDate, setSelectedDate,
         selectedStudent, setSelectedStudent,
         errorMessage, setErrorMessage,
+        
+        // ⭐️⭐️⭐️ [추가된 부분] ⭐️⭐️⭐️
+        authError, setAuthError,
+        // ⭐️⭐️⭐️ [추가 완료] ⭐️⭐️⭐️
+        
         initialLoading, setInitialLoading,
         processing, setProcessing,
         aiLoading, setAiLoading,
@@ -45,10 +55,14 @@ export const ReportProvider = ({ children }) => {
     }), [
         testData, currentPage, uploadDate, selectedClass, 
         selectedDate, selectedStudent, errorMessage,
+        
+        // ⭐️⭐️⭐️ [추가된 부분] ⭐️⭐️⭐️
+        authError, 
+        // ⭐️⭐️⭐️ [추가 완료] ⭐️⭐️⭐️
+        
         initialLoading, processing, aiLoading,
         reportHTML, activeChart, reportCurrentPage
     ]);
-    // ⭐️⭐️⭐️ 변경 완료 ⭐️⭐️⭐️
 
     return (
         <ReportContext.Provider value={value}>
