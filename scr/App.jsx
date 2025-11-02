@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useCallback, useState } from 'react';
 // 1. Context와 훅들 임포트
 import { useReportContext } from './context/ReportContext';
 import { useFirebase } from './hooks/useFirebase';
+// ⭐️ [변경] handleFileDrop을 가져오기 위해 useFileProcessor를 수정해야 합니다.
 import { useFileProcessor } from './hooks/useFileProcessor';
 import { useReportGenerator } from './hooks/useReportGenerator';
 import { useChartAndPDF } from './hooks/useChartAndPDF';
@@ -22,13 +23,42 @@ const getTodayDateString = () => {
 
 // --- 4. 페이지별 컴포넌트 ---
 
-const Page1_Upload = ({ authError, handleFileChange, handleFileProcess, fileInputRef, selectedFiles }) => {
+// ⭐️ [변경] handleFileDrop을 인자로 추가
+const Page1_Upload = ({ authError, handleFileChange, handleFileProcess, fileInputRef, selectedFiles, handleFileDrop }) => {
     // ⭐️⭐️⭐️ 변경된 부분 (Context에서 testData, setSelectedDate, setErrorMessage 가져오기) ⭐️⭐️⭐️
     const { 
         processing, errorMessage, uploadDate, setUploadDate, showPage, 
         testData, setSelectedDate, setErrorMessage 
     } = useReportContext();
     // ⭐️⭐️⭐️ 변경 완료 ⭐️⭐️⭐️
+    
+    // ⭐️ [추가] 드래그 상태를 위한 상태
+    const [isDragging, setIsDragging] = useState(false); 
+
+    // ⭐️ [추가] 드래그 앤 드롭 이벤트 핸들러
+    const handleDragOver = (e) => {
+        e.preventDefault(); // 필수: 드롭이 가능하도록 허용
+        e.stopPropagation();
+        if (!isDragging) setIsDragging(true);
+    };
+
+    const handleDragLeave = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false); 
+    };
+
+    const handleDrop = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            handleFileDrop(e.dataTransfer.files); // useFileProcessor의 드롭 핸들러 호출
+            e.dataTransfer.clearData();
+        }
+    };
+    // ⭐️ [추가] 드래그 앤 드롭 이벤트 핸들러 종료
 
     // --- 날짜 변환 로직 ---
     const getTodayISO = () => new Date().toISOString().split('T')[0];
@@ -119,13 +149,29 @@ const Page1_Upload = ({ authError, handleFileChange, handleFileProcess, fileInpu
 
             <p className="text-center text-gray-600 mb-6">분석할 PDF 시험지 파일과 학생 성적 데이터(CSV 또는 XLSX)를 함께 업로드해주세요. (파일 이름에 **반 이름**이 포함되어야 합니다)</p>
             
-            <div className="mb-4">
-                <label htmlFor="fileInput" className="btn btn-primary w-full cursor-pointer">
-                    <UploadCloud size={20} className="mr-2" />
-                    <span>파일 선택하기</span>
-                </label>
-                <input type="file" id="fileInput" ref={fileInputRef} className="hidden" multiple accept=".pdf,.csv,.xlsx" onChange={handleFileChange} />
+            {/* ⭐️ [변경] 드래그 앤 드롭 영역 추가 및 스타일 적용 */}
+            <div 
+                className={`p-6 border-2 border-dashed rounded-xl transition-colors mb-4 ${
+                    isDragging ? 'border-indigo-500 bg-indigo-50' : 'border-gray-300 hover:border-gray-400'
+                }`}
+                onDragOver={handleDragOver}
+                onDragEnter={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+            >
+                <div className="flex flex-col items-center justify-center space-y-3">
+                    <UploadCloud size={30} className={`text-gray-400 transition-colors ${isDragging ? 'text-indigo-600' : ''}`} />
+                    <p className={`text-lg font-semibold transition-colors ${isDragging ? 'text-indigo-600' : 'text-gray-500'}`}>
+                        파일을 여기에 드래그하거나
+                    </p>
+                    
+                    <label htmlFor="fileInput" className="btn btn-primary cursor-pointer max-w-xs">
+                        <span>파일 선택하기</span>
+                    </label>
+                    <input type="file" id="fileInput" ref={fileInputRef} className="hidden" multiple accept=".pdf,.csv,.xlsx" onChange={handleFileChange} />
+                </div>
             </div>
+            {/* ⭐️ [변경] 드래그 앤 드롭 영역 종료 */}
 
             {selectedFiles.length > 0 && (
                 <div id="fileListContainer" className="mb-4">
@@ -321,7 +367,8 @@ const App = () => {
     } = useReportContext();
     
     const { saveDataToFirestore } = useFirebase();
-    const { fileInputRef, selectedFiles, handleFileChange, handleFileProcess } = useFileProcessor({ saveDataToFirestore });
+    // ⭐️ [변경] handleFileDrop을 가져옵니다.
+    const { fileInputRef, selectedFiles, handleFileChange, handleFileProcess, handleFileDrop } = useFileProcessor({ saveDataToFirestore });
     const { goBack, goHome } = useReportNavigation();
     
     useReportGenerator({ saveDataToFirestore }); 
@@ -388,6 +435,8 @@ const App = () => {
                             handleFileProcess={handleFileProcess}
                             fileInputRef={fileInputRef}
                             selectedFiles={selectedFiles} 
+                            // ⭐️ [변경] handleFileDrop 추가
+                            handleFileDrop={handleFileDrop}
                         />;
             case 'page2': // 반 선택
                 return <Page2_ClassSelect />;
@@ -404,6 +453,8 @@ const App = () => {
                             handleFileProcess={handleFileProcess}
                             fileInputRef={fileInputRef}
                             selectedFiles={selectedFiles} 
+                            // ⭐️ [변경] handleFileDrop 추가
+                            handleFileDrop={handleFileDrop}
                         />;
         }
     };

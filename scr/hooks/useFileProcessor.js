@@ -1,8 +1,27 @@
 import { useRef, useState, useCallback } from 'react';
 import { useReportContext } from '../context/ReportContext';
-import { pairFiles, parsePDF, parseCSV, parseXLSX, processStudentData } from '../lib/fileParser';
-// ⭐️ 1. AI 함수 2개 임포트
+import { parsePDF, parseCSV, parseXLSX, processStudentData } from '../lib/fileParser'; 
 import { getOverallAIAnalysis, getQuestionUnitMapping } from '../lib/ai.js'; 
+
+// --- 새로운 파일명 기반 페어링 로직을 위한 헬퍼 함수 ---
+/**
+ * 파일명에서 확장자를 제외한 기본 이름을 추출합니다.
+ * 예: "고1A반 시험지.pdf" -> "고1A반 시험지"
+ */
+const getBaseName = (fileName) => {
+    const lastDotIndex = fileName.lastIndexOf('.');
+    if (lastDotIndex === -1) return fileName;
+    
+    // 확장자 목록 (PDF, CSV, XLSX)
+    const extension = fileName.substring(lastDotIndex + 1).toLowerCase();
+    if (['pdf', 'csv', 'xlsx'].includes(extension)) {
+        // 확장자를 제외한 부분만 반환
+        return fileName.substring(0, lastDotIndex);
+    }
+    // 확장자가 없거나 다른 경우 전체 파일명 반환
+    return fileName;
+};
+// ----------------------------------------------------
 
 export const useFileProcessor = ({ saveDataToFirestore }) => {
     const { 
@@ -13,10 +32,25 @@ export const useFileProcessor = ({ saveDataToFirestore }) => {
     const fileInputRef = useRef(null);
     const [selectedFiles, setSelectedFiles] = useState([]);
 
-    const handleFileChange = (e) => {
-        setSelectedFiles(Array.from(e.target.files));
+    // ⭐️ [변경] 파일 선택 및 드롭 로직 통합 헬퍼 함수
+    const updateSelectedFiles = (files) => {
+        setSelectedFiles(Array.from(files));
         setErrorMessage('');
     };
+
+    const handleFileChange = (e) => {
+        if (e.target.files) {
+            updateSelectedFiles(e.target.files);
+        }
+    };
+    
+    // ⭐️ [추가] 드래그 앤 드롭으로 파일이 들어왔을 때 처리하는 함수
+    const handleFileDrop = (files) => {
+        if (files) {
+            updateSelectedFiles(files);
+        }
+    };
+    // ⭐️ [변경] 통합된 파일 선택 로직 종료
 
     const handleFileProcess = useCallback(async () => {
         if (!uploadDate) {
@@ -27,19 +61,76 @@ export const useFileProcessor = ({ saveDataToFirestore }) => {
         setProcessing(true);
         setErrorMessage('');
 
-        const pairedFiles = pairFiles(selectedFiles);
+        // ⭐️ [변경] 파일명 기반 페어링 로직 구현 시작
+        const pairedFiles = {}; // { baseName: { pdf: File, spreadsheet: File } }
+        let filePairingError = false;
+
+        selectedFiles.forEach(file => {
+            const baseName = getBaseName(file.name);
+            if (!pairedFiles[baseName]) {
+                pairedFiles[baseName] = {};
+            }
+
+            const extension = file.name.split('.').pop().toLowerCase();
+
+            if (extension === 'pdf') {
+                if (pairedFiles[baseName].pdf) {
+                     filePairingError = true;
+                     setErrorMessage(`'${baseName}' 파일명으로 PDF 파일이 2개 이상 선택되었습니다.`);
+                     return;
+                }
+                pairedFiles[baseName].pdf = file;
+            } else if (['csv', 'xlsx'].includes(extension)) {
+                 if (pairedFiles[baseName].spreadsheet) {
+                     filePairingError = true;
+                     setErrorMessage(`'${baseName}' 파일명으로 성적표 파일이 2개 이상 선택되었습니다.`);
+                     return;
+                }
+                pairedFiles[baseName].spreadsheet = file;
+            }
+            // 그 외 파일 형식은 무시
+        });
+        
+        if (filePairingError) {
+             setProcessing(false);
+             return;
+        }
+        
+        // 유효한 페어만 필터링하고 불완전한 페어 체크
+        const validPairedFiles = {};
         const classNames = Object.keys(pairedFiles);
-        if (classNames.length === 0) {
-            setErrorMessage('파일 쌍(PDF 1개 + 성적표 1개)을 찾을 수 없습니다. 파일 이름을 확인해주세요 (예: "고1A반 시험지.pdf", "고1A반 성적표.csv")');
+        
+        for (const key of classNames) {
+            const pair = pairedFiles[key];
+            if (pair.pdf && pair.spreadsheet) {
+                validPairedFiles[key] = pair;
+            } else if (pair.pdf || pair.spreadsheet) {
+                // 불완전한 페어는 에러 처리
+                setErrorMessage(`'${key}' 파일 쌍이 불완전합니다. (필요: PDF 1개 + 성적표 1개)`);
+                filePairingError = true;
+                break;
+            }
+        }
+        
+        if (filePairingError) {
             setProcessing(false);
             return;
         }
 
+        const finalClassNames = Object.keys(validPairedFiles);
+
+        if (finalClassNames.length === 0) {
+            setErrorMessage('파일 쌍(PDF 1개 + 성적표 1개)을 찾을 수 없습니다. 파일 이름을 확인해주세요 (예: "고1A반.pdf", "고1A반.xlsx")');
+            setProcessing(false);
+            return;
+        }
+        // ⭐️ [변경] 파일명 기반 페어링 로직 구현 종료
+
         let hasError = false;
         let mergedData = {};
 
-        for (const key of classNames) {
-            const { pdf, spreadsheet } = pairedFiles[key];
+        for (const key of finalClassNames) { // validPairedFiles의 키를 사용
+            const { pdf, spreadsheet } = validPairedFiles[key]; // validPairedFiles 사용
             try {
                 // 1. 파일 파싱 (기존과 동일)
                 const pdfText = await parsePDF(pdf);
@@ -112,5 +203,6 @@ export const useFileProcessor = ({ saveDataToFirestore }) => {
         }
     }, [selectedFiles, uploadDate, saveDataToFirestore, setProcessing, setErrorMessage, setTestData, setCurrentPage, setSelectedDate]);
 
-    return { fileInputRef, selectedFiles, handleFileChange, handleFileProcess };
+    // ⭐️ [변경] handleFileDrop 함수를 반환 목록에 추가
+    return { fileInputRef, selectedFiles, handleFileChange, handleFileProcess, handleFileDrop };
 };
