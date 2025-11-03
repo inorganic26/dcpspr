@@ -152,6 +152,10 @@ const Page1_Upload = ({ authError, handleFileChange, handleFileProcess, fileInpu
                     </ul>
                 </div>
             )}
+            {/* ⚠️ '일괄 처리' 방식에서는 setErrorMessage로 진행 상황을 표시할 수 있으므로, 
+                오류 메시지 포맷을 좀 더 유연하게 (빨간색이 아닐 수도 있게) 수정하는 것을 고려해볼 수 있습니다. 
+                (예: processing && errorMessage ? 'info-message' : 'error-message') 
+            */}
             {errorMessage && (
                 <div id="error-message" className="text-red-600 bg-red-100 p-3 rounded-lg mb-4 text-sm"
                     dangerouslySetInnerHTML={{ __html: errorMessage.replace(/\n/g, '<br>') }} />
@@ -330,33 +334,32 @@ const App = () => {
     const { fileInputRef, selectedFiles, handleFileChange, handleFileProcess, handleFileDrop } = useFileProcessor({ saveDataToFirestore });
     const { goBack, goHome } = useReportNavigation();
     
-    useReportGenerator({ saveDataToFirestore }); 
+    // ⭐️⭐️⭐️ [변경] ⭐️⭐️⭐️
+    // '무한 루프' 위험을 제거하기 위해 prop 전달을 제거합니다.
+    useReportGenerator(); 
     const { handlePdfSave } = useChartAndPDF(); 
     
-    // ⭐️⭐️⭐️ [방안 3 적용] ⭐️⭐️⭐️
-    // 네트워크 상태 모니터링
+    // 네트워크 상태 모니터링 (기존과 동일)
     useEffect(() => {
         const handleOnline = () => {
             console.log("네트워크 연결됨");
-            setErrorMessage(''); // 오류 메시지 초기화
+            setErrorMessage(''); 
         };
         
         const handleOffline = () => {
             console.log("네트워크 끊김");
-            // ⭐️ 참고: 이 메시지는 전역 오류 메시지 (팝업)로 표시됩니다.
             setErrorMessage("인터넷 연결이 끊어졌습니다. 온라인 상태를 확인해주세요.");
         };
         
         window.addEventListener('online', handleOnline);
         window.addEventListener('offline', handleOffline);
         
-        // 컴포넌트 언마운트 시 리스너 제거
         return () => {
             window.removeEventListener('online', handleOnline);
             window.removeEventListener('offline', handleOffline);
         };
-    }, [setErrorMessage]); // 의존성 배열에 setErrorMessage 추가
-    // ⭐️⭐️⭐️ [방안 3 적용 완료] ⭐️⭐️⭐️
+    }, [setErrorMessage]); 
+
 
     // --- 렌더링 로직 ---
     

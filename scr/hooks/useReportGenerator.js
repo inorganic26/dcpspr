@@ -1,27 +1,31 @@
 import { useEffect, useCallback } from 'react';
 import { useReportContext } from '../context/ReportContext';
-import { getAIAnalysis, getOverallAIAnalysis, getQuestionUnitMapping } from '../lib/ai.js';
+// ⚠️ 1. AI 관련 모든 import 제거
+// import { getAIAnalysis, getOverallAIAnalysis, getQuestionUnitMapping } from '../lib/ai.js';
 import { generateOverallReportHTML, generateIndividualReportHTML } from '../lib/reportUtils.js';
 
-export const useReportGenerator = ({ saveDataToFirestore }) => {
+// ⚠️ 2. saveDataToFirestore prop이 더 이상 필요하지 않습니다.
+export const useReportGenerator = (/* { saveDataToFirestore } */) => {
     const { 
-        testData, setTestData, currentPage, 
+        testData,
+        currentPage, 
         selectedClass, selectedDate, selectedStudent,
-        aiLoading, setAiLoading, // ⭐️ 1. aiLoading을 Context에서 가져옵니다.
+        // ⚠️ 3. aiLoading 관련 상태 제거 (로딩은 업로드 시점에만 발생)
+        // aiLoading, setAiLoading,
         setReportHTML,
         setCurrentPage, setErrorMessage, setReportCurrentPage
     } = useReportContext();
     
-    // ⭐️ AI 분석 및 리포트 생성 함수
-    const renderReport = useCallback(async () => {
-        setAiLoading(true); 
+    // ⚠️ 4. AI 분석 및 리포트 생성 함수 (이제 async가 아니며, 매우 단순해짐)
+    const renderReport = useCallback(() => {
+        // setAiLoading(true); // ⚠️ 제거
         
-        // 2. ⭐️ testData에서 현재 데이터를 동기적으로 가져옵니다.
+        // 5. Context에서 이미 '모든 분석이 완료된' 데이터를 가져옴
         const currentData = testData[selectedClass]?.[selectedDate];
         if (!currentData) {
             setErrorMessage('리포트 데이터를 찾을 수 없습니다.');
             setCurrentPage('page4');
-            setAiLoading(false);
+            // setAiLoading(false); // ⚠️ 제거
             return;
         }
 
@@ -29,92 +33,63 @@ export const useReportGenerator = ({ saveDataToFirestore }) => {
         if (selectedStudent && !student) {
             setErrorMessage(`학생 '${selectedStudent}' 데이터가 없습니다.`);
             setCurrentPage('page4');
-            setAiLoading(false);
+            // setAiLoading(false); // ⚠️ 제거
             return;
         }
 
-        // 3. ⭐️ "AI 분석 대기 중..."이 포함된 뼈대 HTML을 먼저 렌더링합니다.
-        const skeletonHtml = selectedStudent ?
-            generateIndividualReportHTML(student, currentData, undefined, currentData.aiOverallAnalysis, selectedClass, selectedDate) :
-            generateOverallReportHTML(currentData, currentData.aiOverallAnalysis, selectedClass, selectedDate);
-        
+        // ⚠️ 6. [중요] '무한 루프'를 유발했던 AI 호출, DB 저장, 상태 업데이트 로직 '전부' 제거
+        /*
+        const skeletonHtml = ...
         setReportHTML(skeletonHtml);
-        setReportCurrentPage(1);
+        
+        const analysisPromises = [];
+        ...
+        await Promise.all(analysisPromises);
+        ...
+        if (dataWasUpdated) {
+             await saveDataToFirestore(newTestData);
+             setTestData(newTestData);
+        }
+        */
 
-        // 4. ⭐️ AI 분석 실행
-        let dataWasUpdated = false;
-        let newTestData = JSON.parse(JSON.stringify(testData)); // 수정할 데이터 복사본
-        let currentDataForAI = newTestData[selectedClass]?.[selectedDate];
-        let studentForAI = selectedStudent ? currentDataForAI.studentData?.students?.find(s => s.name === selectedStudent) : null;
-        
-        // ⭐️ [변경] '반 전체/단원 매핑'은 FileProcessor가 처리하므로,
-        // ⭐️ 여기서는 '학생 개별 분석'만 확인합니다.
-        
-        // ⭐️ [변경] 단원 맵이 있는지 먼저 확인
-        if (!currentDataForAI.questionUnitMap) {
-             setErrorMessage("데이터에 '문항 단원 맵'이 없습니다. '처음으로' 돌아가 파일을 다시 업로드하여 AI 분석을 실행해주세요.");
-             setCurrentPage('page4'); // 이전 페이지로
-             setAiLoading(false);
+        // ⚠️ 7. [치명적 오류 방지] 데이터가 분석되었는지 최종 확인
+        // (이 데이터는 useFileProcessor가 만들었어야 함)
+        if (!currentData.aiOverallAnalysis || !currentData.questionUnitMap) {
+             setErrorMessage("데이터가 완전하지 않습니다. (공통 분석 누락) '처음으로' 돌아가 파일을 다시 업로드해주세요.");
+             setCurrentPage('page4'); 
+             return;
+        }
+         if (selectedStudent && student.submitted && !student.aiAnalysis) {
+             setErrorMessage(`'${selectedStudent}' 학생의 AI 분석이 누락되었습니다. '처음으로' 돌아가 파일을 다시 업로드해주세요.`);
+             setCurrentPage('page4'); 
              return;
         }
 
-        const analysisPromises = [];
-
-        // ⭐️ [변경] getOverallAIAnalysis 호출 제거
-        // ⭐️ [변경] getQuestionUnitMapping 호출 제거
-
-        // ⭐️ [변경] getAIAnalysis 호출 시 questionUnitMap 전달
-        if (selectedStudent && studentForAI && studentForAI.submitted && !studentForAI.aiAnalysis) {
-            analysisPromises.push(
-                getAIAnalysis(studentForAI, currentDataForAI, selectedClass, currentDataForAI.questionUnitMap) 
-                    .then(res => { if(res) { studentForAI.aiAnalysis = res; dataWasUpdated = true; } })
-            );
-        }
-        
-        try {
-            await Promise.all(analysisPromises);
-        } catch (e) {
-            setErrorMessage('AI 분석 중 오류가 발생했습니다: ' + e.message);
-            setAiLoading(false);
-            return;
-        }
-
-        // 5. ⭐️ 새 AI 데이터가 있을 때만 DB 저장 및 상태 업데이트 (무한 루프 방지)
-        if (dataWasUpdated) {
-            try {
-                await saveDataToFirestore(newTestData);
-                setTestData(newTestData); // ⭐️ AI 분석이 완료된 새 데이터로 상태 업데이트
-            } catch (error) {
-                setErrorMessage('분석 결과 저장 중 오류 발생: ' + error.message);
-            }
-        }
-        
-        // 6. ⭐️ 최종 HTML 생성
-        // dataWasUpdated가 true면 AI 분석이 끝난 newTestData를 사용하고,
-        // false면 (캐시된 데이터) 기존 currentData를 사용합니다.
-        const finalData = dataWasUpdated ? currentDataForAI : currentData;
-        const finalStudent = dataWasUpdated ? studentForAI : student;
-        
+        // ⚠️ 8. '최종 HTML'을 '즉시' 생성
+        // 데이터는 이미 완성되어 있으므로 'skeleton'이 아닌 'final' HTML을 바로 만듭니다.
         const finalHtml = selectedStudent ?
-            generateIndividualReportHTML(finalStudent, finalData, finalStudent?.aiAnalysis, finalData?.aiOverallAnalysis, selectedClass, selectedDate) :
-            generateOverallReportHTML(finalData, finalData?.aiOverallAnalysis, selectedClass, selectedDate);
+            generateIndividualReportHTML(student, currentData, student?.aiAnalysis, currentData.aiOverallAnalysis, selectedClass, selectedDate) :
+            generateOverallReportHTML(currentData, currentData.aiOverallAnalysis, selectedClass, selectedDate);
 
         setReportHTML(finalHtml); // ⭐️ AI 결과가 반영된 최종 HTML로 업데이트
-        setAiLoading(false);
+        setReportCurrentPage(1);  // 리포트를 새로 열면 항상 1페이지부터
+        // setAiLoading(false); // ⚠️ 제거
         
     }, [ 
-        // ⭐️ testData가 의존성에 포함되어야 합니다.
+        // ⚠️ 9. 의존성 배열 대폭 축소
         testData, selectedClass, selectedDate, selectedStudent, 
-        setAiLoading, setReportHTML, setErrorMessage, setCurrentPage, 
-        setTestData, saveDataToFirestore, setReportCurrentPage
+        setReportHTML, setErrorMessage, setCurrentPage, setReportCurrentPage
     ]);
 
-    // ⭐️ 이 useEffect가 `renderReport` 콜백을 실행합니다.
+    // ⭐️ 이 useEffect는 'renderReport'를 실행할 뿐,
+    // 'renderReport' 자체가 더 이상 AI 호출이나 setTestData를 하지 않으므로
+    // '무한 루프'가 절대 발생하지 않습니다.
     useEffect(() => {
         if (currentPage === 'page5') {
             renderReport();
         }
     }, [currentPage, renderReport]); // ⭐️ `renderReport`는 useCallback으로 감싸져 있으므로 안전합니다.
 
-    return { aiLoading };
+    // return { aiLoading }; // ⚠️ 제거
+    return {}; // 이 훅은 이제 아무것도 반환할 필요가 없습니다.
 };
