@@ -1,23 +1,24 @@
-// scr/lib/ai.js 파일 내용 (실제 API 호출 코드로 변경됨)
+// scr/lib/ai.js 파일 내용 (새로운 API 키 적용 완료)
 
 // ⭐️ 1. 환경 변수 대신 사용자가 제공한 새 API 키를 직접 사용
-const GEMINI_API_KEY = "AIzaSyCE4e23T5uHUg8HevbOV0Opl-upgUeIG-g";
+const GEMINI_API_KEY = "AIzaSyAccqekyIihQOvNaOhEKghlSZZ8p8_yLu0"; 
 const GEMINI_MODEL = 'gemini-2.5-flash'; 
 
 function parseAIResponse(response) {
-    // ⭐️ API가 직접 JSON 텍스트를 반환한다고 가정하고 파싱 로직을 간소화합니다.
-    const match = response.match(/```json([\s\S]*?)```/);
-    if (match) {
-        try {
-            return JSON.parse(match[1]);
-        } catch (e) {
-            console.error("Failed to parse JSON from AI markdown block:", e);
-            throw new Error("AI 응답 JSON 파싱에 실패했습니다.");
-        }
-    }
+    // ⭐️ API가 순수 JSON 텍스트를 반환한다고 가정하고, 마크다운 블록을 찾는 로직을 제거하거나 단순화합니다.
     try {
         return JSON.parse(response);
     } catch (e) {
+        // 혹시 AI가 여전히 마크다운 블록을 보낸다면 대비책으로 한 번 더 시도합니다.
+        const match = response.match(/```json([\s\S]*?)```/);
+        if (match) {
+             try {
+                 return JSON.parse(match[1]);
+             } catch (e2) {
+                 console.error("Failed to parse JSON from AI markdown block:", e2);
+             }
+        }
+        
         console.error("Failed to parse direct AI response as JSON:", e);
         if(response.includes("error")) {
              throw new Error("AI API 호출 중 오류가 발생했습니다. (API 키 또는 할당량 확인 필요)");
@@ -28,9 +29,8 @@ function parseAIResponse(response) {
 
 // ⭐️ 2. 실제 API 호출 함수 (stub 코드 대신 사용)
 async function callGeminiAPI(prompt) {
-    if (!GEMINI_API_KEY) {
-         // 이 오류는 이제 발생하지 않아야 합니다.
-         throw new Error("Gemini API 키가 설정되지 않았습니다.");
+    if (!GEMINI_API_KEY || GEMINI_API_KEY.includes("여기에 새로 발급받은 API 키를 붙여 넣으세요")) {
+         throw new Error("Gemini API 키가 유효하지 않습니다. 새로운 키를 발급받아 교체해주세요.");
     }
     
     console.log(`[API Call] Model: ${GEMINI_MODEL}, Prompt length: ${prompt.length} chars`);
@@ -42,9 +42,8 @@ async function callGeminiAPI(prompt) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 contents: [{ role: "user", parts: [{ text: prompt }] }],
-                // 💥 수정: 'config'를 'generationConfig'로 변경하여 400 Bad Request 해결
+                // 💥 'generationConfig'로 JSON 형식 응답을 강제합니다.
                 generationConfig: { 
-                    // API가 JSON 형식으로만 응답하도록 지시 (안정성 확보)
                     responseMimeType: "application/json", 
                     temperature: 0.1 
                 }
@@ -71,7 +70,6 @@ async function callGeminiAPI(prompt) {
 
 // AI 프롬프트에 사용되는 헬퍼 함수 (유지)
 function getDifficulty(qNum, selectedClass) {
-    // ... (기존 getDifficulty 함수 내용 유지)
     if (!selectedClass) return '정보 없음';
     // ⭐️ PDF 예시의 난이도 체계를 단순화하여 적용
     if (selectedClass.includes('고2') || selectedClass.includes('고1')) {
@@ -87,7 +85,7 @@ function getDifficulty(qNum, selectedClass) {
 
 // --- AI 분석 함수들 (export) ---
 
-// ⭐️ 4. getAIAnalysis (학생 개별 분석) - 저렴한 호출
+// ⭐️ 4. getAIAnalysis (학생 개별 분석)
 export async function getAIAnalysis(student, data, selectedClass, questionUnitMap) {
     const incorrectAnswers = student.answers.filter(a => !a.isCorrect);
     if (incorrectAnswers.length === 0) {
@@ -109,7 +107,7 @@ export async function getAIAnalysis(student, data, selectedClass, questionUnitMa
     }
 
     const prompt = `
-        당신은 데이터 기반 교육 컨설턴트입니다. 다음은 한 학생의 수학 시험 결과와 문항별 개념 맵입니다. 학생의 전반적인 강점, 약점, 학습 추천 방안과 함께, 틀린 각 문항에 대한 분석을 제공해주세요. 모든 내용은 한국어로, 전문적이고 격려하는 톤으로 작성해주세요. 분석 내용에는 '학생'이라는 단어나 특정 이름을 언급하지 말고, 주어를 생략하여 서술해주세요.
+        당신은 데이터 기반 교육 컨설턴트입니다. 다음은 한 학생의 수학 시험 결과와 문항별 개념 맵입니다. 학생의 전반적인 강점, 약점, 학습 추천 방안과 함께, 틀린 각 문항에 대한 분석을 제공해주세요. 모든 내용은 한국어로, 전문적이고 격려하는 톤으로 작성해주세요. 분석 내용에는 '학생'이라는 단어나 특정 이름을 언급하지 말고, 주어를 생략하여 서술하세요.
 
         **학생 정보:**
         - 점수: ${student.score}점
@@ -121,10 +119,7 @@ export async function getAIAnalysis(student, data, selectedClass, questionUnitMa
         **틀린 문항 정보 (JSON):**
         ${JSON.stringify(incorrectInfoForAI, null, 2)}
         
-        // ... (나머지 분석 요청 및 JSON 형식 지시)
-        
         **결과는 반드시 다음 JSON 형식으로만 반환해주세요. 설명이나 다른 텍스트는 포함하지 마세요:**
-        \`\`\`json
         {
             "strengths": "분석된 강점 내용",
             "weaknesses": "분석된 약점 내용",
@@ -138,13 +133,12 @@ export async function getAIAnalysis(student, data, selectedClass, questionUnitMa
                 }
             ]
         }
-        \`\`\`
     `;
 
     return callGeminiAPI(prompt); // ⭐️ 실제 API 호출
 }
 
-// ⭐️ 5. getOverallAIAnalysis (반 전체 분석) - 비싼 호출 (PDF 포함)
+// ⭐️ 5. getOverallAIAnalysis (반 전체 분석)
 export async function getOverallAIAnalysis(data) {
     const highErrorRateQuestions = [];
     data.studentData.answerRates.forEach((rate, i) => {
@@ -176,10 +170,7 @@ export async function getOverallAIAnalysis(data) {
         **주요 오답 문항 정보 (정답률 40% 이하):**
         ${JSON.stringify(highErrorRateQuestions, null, 2)}
 
-        // ... (나머지 분석 요청 및 JSON 형식 지시)
-        
         **결과는 반드시 다음 JSON 형식으로만 반환해주세요. 설명이나 다른 텍스트는 포함하지 마세요:**
-         \`\`\`json
         {
             "summary": "종합 총평 내용",
             "common_weaknesses": "공통 약점 분석 내용",
@@ -193,15 +184,13 @@ export async function getOverallAIAnalysis(data) {
                 }
             ]
         }
-         \`\`\`
     `;
     
     return callGeminiAPI(prompt); // ⭐️ 실제 API 호출
 }
 
-// ⭐️ 6. getQuestionUnitMapping (단원 매핑) - 비싼 호출 (PDF 포함)
+// ⭐️ 6. getQuestionUnitMapping (단원 매핑)
 export async function getQuestionUnitMapping(data) {
-    // ⭐️ [변경] RPM 목차를 제거하고 AI가 PDF 텍스트에서 세부 단원을 직접 추출하도록 지시
     const prompt = `
         다음은 시험지 전체 텍스트입니다. 1번부터 ${data.studentData.questionCount}번까지 각 문항이 다루는 가장 **세부적이고 정확한 핵심 수학 개념**을 시험지 텍스트(문제 내용, 표지의 단원 정보 등)를 분석하여 찾아주세요.
 
@@ -211,8 +200,7 @@ export async function getQuestionUnitMapping(data) {
         **분석 요청:**
         각 문항에 대해, 시험지 내용을 면밀히 분석하여 가장 **세부적이고 정확한 핵심 수학 개념**을 JSON 형식으로 반환해주세요. (예: '두 점 사이의 거리', '선분의 내분점', '유리함수의 평행이동', '집합의 뜻과 표현')
 
-        결과는 반드시 다음 JSON 형식으로만 반환해주세요. 설명이나 다른 텍스트는 포함하지 마세요.
-         \`\`\`json
+        **결과는 반드시 다음 JSON 형식으로만 반환해주세요. 설명이나 다른 텍스트는 포함하지 마세요:**
         {
             "question_units": [
                 { "qNum": 1, "unit": "집합의 뜻과 표현" },
@@ -220,10 +208,6 @@ export async function getQuestionUnitMapping(data) {
                 { "qNum": ${data.studentData.questionCount}, "unit": "..." }
             ]
         }
-         \`\`\`
     `; 
     return callGeminiAPI(prompt); // ⭐️ 실제 API 호출
 }
-
-// ⭐️ 7. 기존의 parseAIResponse는 위 callGeminiAPI에서 처리되도록 변경
-// ... (파일 끝)
