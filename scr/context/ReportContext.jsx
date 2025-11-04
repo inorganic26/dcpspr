@@ -17,7 +17,7 @@ export const ReportProvider = ({ children }) => {
     const [initialLoading, setInitialLoading] = useState(true); // App.jsx에서 로그인 후 최초 데이터 로드
     const [processing, setProcessing] = useState(false); // useFileProcessor (파일 처리 중)
     
-    // ⭐️ [수정] useChartAndPDF.js가 'aiLoading'을 사용하므로 이름을 통일합니다.
+    // ⭐️ [수정] 개별 분석 로딩(isIndividualLoading)과 차트 로딩(aiLoading)을 'aiLoading'으로 통일
     const [aiLoading, setAiLoading] = useState(false); 
 
     // --- Report Display States ---
@@ -52,7 +52,7 @@ export const ReportProvider = ({ children }) => {
         initialLoading, setInitialLoading,
         processing, setProcessing,
         
-        // ⭐️ [수정] isIndividualLoading -> aiLoading으로 변경
+        // ⭐️ [수정] isIndividualLoading -> aiLoading 으로 통일하여 제공
         aiLoading, setAiLoading,
 
         reportHTML, setReportHTML,

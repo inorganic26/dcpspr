@@ -328,6 +328,7 @@ export const useChartAndPDF = () => {
         const data = testData[selectedClass]?.[selectedDate];
         
         // ⭐️ [수정] aiLoading (개별분석 로딩) 중에는 차트를 그리지 않음
+        // (이제 aiLoading이 Context에서 올바르게 제공됨)
         if (!data || !data.studentData || !reportHTML || aiLoading) {
             return;
         }
@@ -347,7 +348,6 @@ export const useChartAndPDF = () => {
                 canvas, 
                 data.studentData, 
                 currentStudentObj 
-                // ⭐️ 참고: 차트 내부 제목 변경은 reportUtils.js에서 해야 합니다.
             );
             if (chartInstanceRef.current) {
                 // ⭐️ 이제 setActiveChart는 Context에서 온 유효한 함수입니다.
@@ -371,7 +371,8 @@ export const useChartAndPDF = () => {
             // setActiveChart(null); // <-- 349번째 줄, 이 라인이 오류의 원인입니다.
         };
 
-    // [수정] 의존성 배열에서 fetchCumulativeData 제거
+    // ⭐️ [수정] 의존성 배열에 'aiLoading'이 포함되어,
+    // 개별 분석 완료 후(aiLoading=false) 차트가 다시 렌더링됩니다.
     }, [reportHTML, aiLoading, testData, selectedClass, selectedDate, selectedStudent, setActiveChart, currentPage, reportCurrentPage]); 
     // --- 차트 렌더링 Effect 수정 완료 ---
 
@@ -502,8 +503,10 @@ export const useChartAndPDF = () => {
                              yPos = 20;
                         }
                         
-                        // ⭐️⭐️⭐️ [오류 수정] 'PNG' -> undefined로 변경 ⭐️⭐️⭐️
-                        pdf.addImage(chartImgData, undefined, xOffset, yPos, imgWidth, imgHeight, undefined, 'FAST');
+                        // ⭐️⭐️⭐️ [PDF 버그 수정] ⭐️⭐️⭐️
+                        // 'UNKNOWN' 오류는 jsPDF가 Base64 형식을 자동 인식하지 못할 때 발생합니다.
+                        // 'PNG' 형식을 명시적으로 지정해줍니다. (line 493)
+                        pdf.addImage(chartImgData, 'PNG', xOffset, yPos, imgWidth, imgHeight, undefined, 'FAST');
                         yPos += imgHeight + 10; 
                     } catch (e) {
                          console.error("PDF addImage 오류 (scoreChart Page 1):", e);
@@ -620,8 +623,9 @@ export const useChartAndPDF = () => {
 
                         const xOffset = (pdf.internal.pageSize.getWidth() - imgWidth) / 2;
                         
-                        // ⭐️⭐️⭐️ [오류 수정] 'PNG' -> undefined로 변경 ⭐️⭐️⭐️
-                        pdf.addImage(chartImgData, undefined, xOffset, yPos, imgWidth, imgHeight, undefined, 'FAST');
+                        // ⭐️⭐️⭐️ [PDF 버그 수정] ⭐️⭐️⭐️
+                        // 'PNG' 형식을 명시적으로 지정해줍니다. (line 577)
+                        pdf.addImage(chartImgData, 'PNG', xOffset, yPos, imgWidth, imgHeight, undefined, 'FAST');
                         yPos += imgHeight + 10;
                     } catch (e) {
                         console.error("PDF addImage/getImageProperties 오류:", e);
