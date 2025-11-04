@@ -35,14 +35,14 @@ function parseAIResponse(response) {
 // ⭐️ 4. 실제 API 호출 함수 (Cloud Function을 호출하도록 수정됨)
 async function callGeminiAPI(prompt) {
     
-    console.log(`[Cloud Function Call] Model: gemini-2.0-flash-exp, Prompt length: ${prompt.length} chars`);
+    console.log(`[Cloud Function Call] Model: gemini-2.5-flash, Prompt length: ${prompt.length} chars`);
     
     try {
         // ⭐️ 5. Google API (fetch) 대신 Firebase Function을 호출
         const result = await callGeminiAPIFunction({ prompt: prompt });
         
-        // ⭐️ 6. Cloud Function이 반환한 '텍스트' 데이터를 가져옴 (result.data.result로 수정)
-        const responseText = result.data.result; 
+        // ⭐️ 6. Cloud Function이 반환한 '텍스트' 데이터를 가져옴 (result.data)
+        const responseText = result.data; 
 
         if (!responseText || typeof responseText !== 'string') {
             console.error("Cloud Function에서 유효하지 않은 응답을 받았습니다:", result.data);
