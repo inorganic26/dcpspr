@@ -1,4 +1,4 @@
-// scr/lib/ai.js 파일 내용 (API 키 완전 제거!)
+// scr/lib/ai.js 파일 내용
 
 // ⭐️ 1. Firebase Functions 모듈 임포트
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -35,17 +35,25 @@ function parseAIResponse(response) {
 // ⭐️ 4. 실제 API 호출 함수 (Cloud Function을 호출하도록 수정됨)
 async function callGeminiAPI(prompt) {
     
-    console.log(`[Cloud Function Call] Model: gemini-2.5-flash, Prompt length: ${prompt.length} chars`);
+    console.log(`[Cloud Function Call] Model: (gemini-via-backend), Prompt length: ${prompt.length} chars`);
     
     try {
-        // ⭐️ 5. Google API (fetch) 대신 Firebase Function을 호출
+        // ⭐️ 5. Firebase Function을 호출
         const result = await callGeminiAPIFunction({ prompt: prompt });
         
-        // ⭐️ 6. Cloud Function이 반환한 '텍스트' 데이터를 가져옴 (result.data)
-        const responseText = result.data; 
+        // ⭐️ 6. [버그 수정] Cloud Function 응답 형식 처리 (Robust-Fix)
+        const responseData = result.data;
+        let responseText;
 
-        if (!responseText || typeof responseText !== 'string') {
-            console.error("Cloud Function에서 유효하지 않은 응답을 받았습니다:", result.data);
+        if (typeof responseData === 'string') {
+            // Case 1: Backend가 예상대로 '문자열'을 반환한 경우
+            responseText = responseData;
+        } else if (responseData && typeof responseData.result === 'string') {
+            // Case 2: Backend가 {result: '...'} 객체를 반환한 경우 (에러 로그에서 확인됨)
+            responseText = responseData.result;
+        } else {
+            // Case 3: 그 외의 모든 유효하지 않은 응답
+            console.error("Cloud Function에서 유효하지 않은 응답을 받았습니다:", responseData);
             throw new Error("AI(Cloud Function)로부터 유효한 응답 텍스트를 받지 못했습니다.");
         }
         
@@ -54,7 +62,10 @@ async function callGeminiAPI(prompt) {
 
     } catch (error) {
         console.error("Firebase Function 호출 오류:", error);
-        throw new Error(`AI 분석(Cloud Function) 호출 실패: ${error.code} - ${error.message}`);
+        // ⭐️ [수정] 오류 메시지가 undefined로 표시되는 문제 수정
+        const errorMessage = error.message || "알 수 없는 오류";
+        const errorCode = error.code || "internal";
+        throw new Error(`AI 분석(Cloud Function) 호출 실패: ${errorCode} - ${errorMessage}`);
     }
 }
 

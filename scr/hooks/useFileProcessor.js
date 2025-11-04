@@ -3,12 +3,13 @@
 import { useRef, useState, useCallback } from 'react';
 import { useReportContext } from '../context/ReportContext';
 import { pairFiles, parsePDF, parseCSV, parseXLSX, processStudentData } from '../lib/fileParser'; 
-import { getOverallAIAnalysis, getQuestionUnitMapping, getAIAnalysis } from '../lib/ai.js'; 
-import pLimit from 'p-limit'; // ⭐️ API 속도 제한을 위한 라이브러리 (npm install p-limit 필요)
+// ⭐️ [수정] getAIAnalysis 임포트 제거
+import { getOverallAIAnalysis, getQuestionUnitMapping } from '../lib/ai.js'; 
+import pLimit from 'p-limit'; // ⭐️ p-limit은 이제 공통 분석 2개만 동시 실행 (필요시 pLimit 제거 가능)
 
-const limit = pLimit(5); 
+const limit = pLimit(5); // (이 값은 이제 큰 의미가 없지만 유지합니다)
 
-// (processClassBatch 헬퍼 함수는 변경 없음)
+// ⭐️ [수정] processClassBatch에서 개별 학생 분석 로직 '완전 제거'
 async function processClassBatch(className, classFiles, uploadDate, setErrorMessage) {
     const { pdf, spreadsheet } = classFiles;
 
@@ -27,8 +28,8 @@ async function processClassBatch(className, classFiles, uploadDate, setErrorMess
         questionUnitMap: null,
     };
 
-    console.log(`[${className}] Step 1/3: 공통 분석 (총평, 단원맵) 병렬 시작...`);
-    setErrorMessage(`'${className}' AI 공통 분석 중... (1/3)`);
+    console.log(`[${className}] Step 1/2: 공통 분석 (총평, 단원맵) 병렬 시작...`);
+    setErrorMessage(`'${className}' AI 공통 분석 중... (1/2)`);
     
     const [aiOverall, unitMap] = await Promise.all([
         getOverallAIAnalysis(dataForThisDate),
@@ -42,38 +43,28 @@ async function processClassBatch(className, classFiles, uploadDate, setErrorMess
         throw new Error(`'${className}'의 문항-단원 맵(unitMap) 생성에 실패했습니다. AI 분석을 중단합니다.`);
     }
 
-    console.log(`[${className}] Step 2/3: 학생 ${studentData.students.length}명 개별 분석 병렬 시작 (동시성 5)...`);
-    setErrorMessage(`'${className}' 학생 ${studentData.students.length}명 개별 분석 중... (2/3)`);
+    // --------------------------------------------------------
+    // ⭐️ [제거] Step 2/3: 학생 개별 분석 로직 (전체 삭제)
+    //
+    //   console.log(`[${className}] Step 2/3: 학생 ${studentData.students.length}명 개별 분석 병렬 시작...`);
+    //   setErrorMessage(`'${className}' 학생 ${studentData.students.length}명 개별 분석 중... (2/3)`);
+    //
+    //   const studentPromises = studentData.students.map(...);
+    //   const studentAiResults = await Promise.all(studentPromises);
+    //   studentData.students.forEach(...);
+    // --------------------------------------------------------
 
-    const studentPromises = studentData.students.map(student => {
-        if (student.submitted) {
-            return limit(() => {
-                console.log(`[${className}] 학생 분석 시작: ${student.name}`);
-                return getAIAnalysis(student, dataForThisDate, className, unitMap);
-            });
-        }
-        return Promise.resolve(null); 
-    });
-
-    const studentAiResults = await Promise.all(studentPromises);
-
-    studentData.students.forEach((student, index) => {
-        if (student.submitted) {
-            student.aiAnalysis = studentAiResults[index];
-        }
-    });
-
-    console.log(`[${className}] Step 3/3: 모든 분석 완료.`);
+    console.log(`[${className}] Step 2/2: 공통 분석 완료.`);
     return dataForThisDate;
 }
 
 
-// --- 기존 useFileProcessor 훅 ---
+// --- useFileProcessor 훅 ---
 export const useFileProcessor = ({ saveDataToFirestore }) => {
     const { 
         setProcessing, setErrorMessage, setTestData, 
         setCurrentPage, uploadDate, setSelectedDate,
-        currentTeacher // ⭐️ [수정 없음] 로그인을 확인하기 위해 여전히 필요함
+        currentTeacher 
     } = useReportContext();
     
     const fileInputRef = useRef(null);
@@ -94,8 +85,8 @@ export const useFileProcessor = ({ saveDataToFirestore }) => {
     };
 
     const handleFileProcess = useCallback(async () => {
-        // ⭐️ [수정 없음] 이 확인 로직은 '선생님'만 올리게 하므로 반드시 필요
-        if (!currentTeacher || !currentTeacher.id) {
+        // ⭐️ [수정] currentTeacher.id가 아닌 currentTeacher 객체 자체로 확인
+        if (!currentTeacher) { 
             setErrorMessage('로그인이 필요합니다. 앱을 새로고침하여 다시 로그인해주세요.');
             return;
         }
@@ -121,7 +112,7 @@ export const useFileProcessor = ({ saveDataToFirestore }) => {
 
         for (const className of classNames) {
             try {
-                console.log(`--- [${className}] AI 일괄 분석 시작 ---`);
+                console.log(`--- [${className}] AI 공통 분석 시작 ---`);
 
                 const singleClassFullData = await processClassBatch(
                     className, 
@@ -134,7 +125,7 @@ export const useFileProcessor = ({ saveDataToFirestore }) => {
                     [uploadDate]: singleClassFullData
                 };
 
-                console.log(`--- [${className}] AI 일괄 분석 완료 ---`);
+                console.log(`--- [${className}] AI 공통 분석 완료 ---`);
 
             } catch (error) {
                 console.error(`Error processing files for ${className}:`, error);
@@ -152,10 +143,9 @@ export const useFileProcessor = ({ saveDataToFirestore }) => {
         try {
             setErrorMessage('모든 분석 완료! DB에 저장 중...');
             
-            // ⭐️ [수정] saveDataToFirestore에 teacherId를 전달하지 않음
-            await saveDataToFirestore(/* currentTeacher.id 제거 */ allAnalysedData); 
+            // ⭐️ [수정] saveDataToFirestore는 이제 '공용' 데이터에 저장
+            await saveDataToFirestore(allAnalysedData); 
             
-            // ⭐️ [수정 없음] 전역 상태 업데이트 (공용 데이터를 업데이트)
             setTestData(prevData => {
                 const newData = JSON.parse(JSON.stringify(prevData)); 
                 Object.keys(allAnalysedData).forEach(className => {
@@ -179,7 +169,7 @@ export const useFileProcessor = ({ saveDataToFirestore }) => {
     }, [
         selectedFiles, uploadDate, saveDataToFirestore, setProcessing, 
         setErrorMessage, setTestData, setCurrentPage, setSelectedDate, 
-        currentTeacher // ⭐️ [수정 없음] 로그인 확인을 위해 의존성에 유지
+        currentTeacher
     ]);
 
     return { fileInputRef, selectedFiles, handleFileChange, handleFileProcess, handleFileDrop };

@@ -1,64 +1,70 @@
 // scr/context/ReportContext.jsx
 
-import React, { createContext, useState, useContext, useMemo } from 'react';
+import React, { createContext, useContext, useState } from 'react';
 
 const ReportContext = createContext();
 
 export const useReportContext = () => useContext(ReportContext);
 
 export const ReportProvider = ({ children }) => {
-    // App.jsx에 있던 모든 useState를 이곳으로 이동
     const [testData, setTestData] = useState({});
-    const [currentPage, setCurrentPage] = useState('page1');
-    const [uploadDate, setUploadDate] = useState('');
-    const [selectedClass, setSelectedClass] = useState('');
-    const [selectedDate, setSelectedDate] = useState('');
-    const [selectedStudent, setSelectedStudent] = useState(null);
-
-    // UI 상태
-    const [initialLoading, setInitialLoading] = useState(false); // ⭐️ false로 변경 (로그인 후 로딩)
-    const [processing, setProcessing] = useState(false); 
-    const [aiLoading, setAiLoading] = useState(false);
-    const [errorMessage, setErrorMessage] = useState('');
+    const [currentPage, setCurrentPage] = useState('page1'); // page1 (upload), page2 (class), page3 (date), page4 (report), page5 (display)
+    const [selectedClass, setSelectedClass] = useState(null);
+    const [selectedDate, setSelectedDate] = useState(null);
+    const [selectedStudent, setSelectedStudent] = useState(null); // null for overall, name for individual
     
-    // ⭐️ [변경] 인증 상태: authError 대신 로그인한 교사 정보 저장
-    const [currentTeacher, setCurrentTeacher] = useState(null); 
+    // --- Global Loading States ---
+    const [initialLoading, setInitialLoading] = useState(true); // App.jsx에서 로그인 후 최초 데이터 로드
+    const [processing, setProcessing] = useState(false); // useFileProcessor (파일 처리 중)
+    
+    // ⭐️ [수정] useChartAndPDF.js가 'aiLoading'을 사용하므로 이름을 통일합니다.
+    const [aiLoading, setAiLoading] = useState(false); 
 
-    // 리포트/차트 상태
+    // --- Report Display States ---
     const [reportHTML, setReportHTML] = useState('');
-    const [activeChart, setActiveChart] = useState(null);
     const [reportCurrentPage, setReportCurrentPage] = useState(1);
 
-    const showPage = (page) => setCurrentPage(page);
+    // --- Error States ---
+    const [errorMessage, setErrorMessage] = useState(''); // Page1 (파일 업로드) 용
+    
+    // --- Auth State ---
+    const [currentTeacher, setCurrentTeacher] = useState(null); // null, or { name: "...", phone: "..." }
 
-    const value = useMemo(() => ({
+    // --- Other ---
+    const [uploadDate, setUploadDate] = useState('');
+
+    // ⭐️ [추가] useChartAndPDF.js가 Context에서 사용하길 기대하는 차트 상태
+    const [activeChart, setActiveChart] = useState(null);
+
+
+    const showPage = (pageName) => {
+        setErrorMessage(''); // 페이지 이동 시 항상 에러 메시지 초기화
+        setCurrentPage(pageName);
+    };
+
+    const value = {
         testData, setTestData,
         currentPage, setCurrentPage, showPage,
-        uploadDate, setUploadDate,
         selectedClass, setSelectedClass,
         selectedDate, setSelectedDate,
         selectedStudent, setSelectedStudent,
-        errorMessage, setErrorMessage,
-        
-        // ⭐️ [변경]
-        currentTeacher, setCurrentTeacher,
         
         initialLoading, setInitialLoading,
         processing, setProcessing,
+        
+        // ⭐️ [수정] isIndividualLoading -> aiLoading으로 변경
         aiLoading, setAiLoading,
+
         reportHTML, setReportHTML,
-        activeChart, setActiveChart,
-        reportCurrentPage, setReportCurrentPage
-    }), [
-        testData, currentPage, uploadDate, selectedClass, 
-        selectedDate, selectedStudent, errorMessage,
+        reportCurrentPage, setReportCurrentPage,
+
+        errorMessage, setErrorMessage,
+        currentTeacher, setCurrentTeacher,
+        uploadDate, setUploadDate,
         
-        // ⭐️ [변경]
-        currentTeacher, 
-        
-        initialLoading, processing, aiLoading,
-        reportHTML, activeChart, reportCurrentPage
-    ]);
+        // ⭐️ [추가] Context에 activeChart 상태 제공
+        activeChart, setActiveChart
+    };
 
     return (
         <ReportContext.Provider value={value}>

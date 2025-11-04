@@ -14,7 +14,7 @@ import { auth } from './lib/firebaseConfig';
 
 import { Home, ArrowLeft, UploadCloud, FileText, Loader, TriangleAlert, Save, PlusCircle, CalendarDays, LogOut, User } from 'lucide-react';
 
-// ... (Page1_Upload ~ Page5_ReportDisplay 컴포넌트는 기존과 동일) ...
+// ... (Page1_Upload ~ Page4_ReportSelect 컴포넌트는 기존과 동일) ...
 const Page1_Upload = ({ handleFileChange, handleFileProcess, fileInputRef, selectedFiles, handleFileDrop }) => { 
     // ... (이 컴포넌트의 코드는 이전과 동일) ...
     const { 
@@ -230,7 +230,9 @@ const App = () => {
     const { fileInputRef, selectedFiles, handleFileChange, handleFileProcess, handleFileDrop } = useFileProcessor({ saveDataToFirestore });
     const { goBack, goHome } = useReportNavigation();
     
-    useReportGenerator(); 
+    // ⭐️ [수정] useReportGenerator에 DB저장 함수와 상태 설정 함수를 전달
+    useReportGenerator({ saveDataToFirestore, setTestData }); 
+    
     const { handlePdfSave } = useChartAndPDF(); 
     
     // (네트워크 모니터링, 익명 인증 useEffect는 변경 없음)
@@ -289,25 +291,21 @@ const App = () => {
         }
     };
     
-    // ⭐️ --- [버그 수정] 로그인/등록 성공 시 공통 로직 ---
+    // (performSuccessfulLogin 핸들러는 변경 없음)
     const performSuccessfulLogin = async (teacher) => {
         setCurrentTeacher(teacher); // Context에 선생님 정보 저장
         setInitialLoading(true); // "로딩 중" 화면 표시
         
         try {
-            // ⭐️ 1. '공용' 데이터를 불러옵니다.
             const loadedData = await loadDataFromFirestore(); 
             setTestData(loadedData || {}); // Context에 공용 데이터 저장
 
         } catch (error) {
-            // ⭐️ 2. [추가] 로드에 실패해도 앱이 멈추지 않도록 오류 처리
             console.error("데이터 로드 실패:", error);
-            // ⭐️ 로그인 오류가 아니라, 로딩 오류임을 명시
             setLoginError("로그인은 성공했으나 데이터 로드에 실패했습니다: " + error.message);
-            setTestData({}); // ⭐️ 빈 데이터로 설정
+            setTestData({}); // 빈 데이터로 설정
 
         } finally {
-            // ⭐️ 3. [추가] 성공하든, 실패하든, "로딩 중"을 '반드시' 끝냅니다.
             setInitialLoading(false); 
             setIsLoggingIn(false);
         }
@@ -375,8 +373,7 @@ const App = () => {
                     />;
         }
 
-        // ⭐️ [여기] 버그가 수정되어, 로딩이 멈추지 않고 이 화면을 보여주거나,
-        // ⭐️ 'initialLoading'이 false가 되어 다음 switch문으로 넘어갑니다.
+        // (최초 데이터 로딩 확인)
         if (initialLoading) {
             return (
                 <div id="initialLoader" className="card p-8 text-center mt-20">

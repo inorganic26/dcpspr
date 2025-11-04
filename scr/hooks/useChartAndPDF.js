@@ -1,3 +1,5 @@
+// scr/hooks/useChartAndPDF.js
+
 import { useEffect, useCallback, useRef } from 'react';
 import { useReportContext } from '../context/ReportContext';
 import { renderScoreChart, renderCumulativeScoreChart } from '../lib/reportUtils.js';
@@ -324,7 +326,9 @@ export const useChartAndPDF = () => {
     useEffect(() => {
         // 데이터 준비
         const data = testData[selectedClass]?.[selectedDate];
-        if (!data || !data.studentData || !reportHTML) {
+        
+        // ⭐️ [수정] aiLoading (개별분석 로딩) 중에는 차트를 그리지 않음
+        if (!data || !data.studentData || !reportHTML || aiLoading) {
             return;
         }
 
@@ -346,6 +350,7 @@ export const useChartAndPDF = () => {
                 // ⭐️ 참고: 차트 내부 제목 변경은 reportUtils.js에서 해야 합니다.
             );
             if (chartInstanceRef.current) {
+                // ⭐️ 이제 setActiveChart는 Context에서 온 유효한 함수입니다.
                 setActiveChart(chartInstanceRef.current);
             }
         }
@@ -356,7 +361,14 @@ export const useChartAndPDF = () => {
                 chartInstanceRef.current.destroy();
                 chartInstanceRef.current = null;
             }
-            setActiveChart(null); 
+            
+            // ⭐️⭐️⭐️ [버그 수정] ⭐️⭐️⭐️
+            // 이 라인이 오류의 원인이었습니다. (line 349)
+            // React Hook 정리(cleanup) 함수 내부에서 state setter를 호출하면
+            // 렌더링 충돌로 앱이 중단될 수 있습니다.
+            // 이 라인을 제거(주석 처리)하여 오류를 해결합니다.
+            
+            // setActiveChart(null); // <-- 349번째 줄, 이 라인이 오류의 원인입니다.
         };
 
     // [수정] 의존성 배열에서 fetchCumulativeData 제거
@@ -390,7 +402,7 @@ export const useChartAndPDF = () => {
                 
                  currentActiveChart = newChart; 
                  chartInstanceRef.current = newChart; 
-                 setActiveChart(newChart);
+                 setActiveChart(newChart); // ⭐️ 이제 유효한 함수입니다.
                 
                  await new Promise(resolve => setTimeout(resolve, 300)); 
              }
