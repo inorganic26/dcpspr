@@ -1,77 +1,71 @@
-// scr/lib/ai.js 파일 내용 (새로운 API 키 적용 완료)
+// scr/lib/ai.js 파일 내용 (API 키 완전 제거!)
 
-// ⭐️ 1. 환경 변수 대신 사용자가 제공한 새 API 키를 직접 사용
-const GEMINI_API_KEY = "AIzaSyAccqekyIihQOvNaOhEKghlSZZ8p8_yLu0"; 
-const GEMINI_MODEL = 'gemini-2.5-flash'; 
+// ⭐️ 1. Firebase Functions 모듈 임포트
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { db } from './firebaseConfig'; // ⭐️ firebaseConfig.js에서 db를 가져옵니다.
+
+// ⭐️ 2. API 키와 모델 변수 (GEMINI_API_KEY, GEMINI_MODEL) 완전 제거!
+
+// ⭐️ 3. 우리가 만든 Cloud Function을 참조
+const functions = getFunctions(db.app); // ⭐️ db가 속한 app 인스턴스를 사용
+const callGeminiAPIFunction = httpsCallable(functions, 'callGeminiAPI');
+
 
 function parseAIResponse(response) {
-    // ⭐️ API가 순수 JSON 텍스트를 반환한다고 가정하고, 마크다운 블록을 찾는 로직을 제거하거나 단순화합니다.
+    // (이 함수는 기존과 동일)
     try {
         return JSON.parse(response);
     } catch (e) {
-        // 혹시 AI가 여전히 마크다운 블록을 보낸다면 대비책으로 한 번 더 시도합니다.
         const match = response.match(/```json([\s\S]*?)```/);
         if (match) {
-             try {
-                 return JSON.parse(match[1]);
-             } catch (e2) {
-                 console.error("Failed to parse JSON from AI markdown block:", e2);
+             try { 
+                 return JSON.parse(match[1]); 
+             } catch (e2) { 
+                 console.error("Failed to parse JSON from AI markdown block:", e2); 
              }
         }
-        
         console.error("Failed to parse direct AI response as JSON:", e);
-        if(response.includes("error")) {
-             throw new Error("AI API 호출 중 오류가 발생했습니다. (API 키 또는 할당량 확인 필요)");
+        if(response.includes("error")) { 
+            throw new Error("AI API 호출 중 오류가 발생했습니다. (백엔드 함수 확인 필요)"); 
         }
         throw new Error("AI가 유효하지 않은 형식으로 응답했습니다.");
     }
 }
 
-// ⭐️ 2. 실제 API 호출 함수 (stub 코드 대신 사용)
+// ⭐️ 4. 실제 API 호출 함수 (Cloud Function을 호출하도록 수정됨)
 async function callGeminiAPI(prompt) {
-    if (!GEMINI_API_KEY || GEMINI_API_KEY.includes("여기에 새로 발급받은 API 키를 붙여 넣으세요")) {
-         throw new Error("Gemini API 키가 유효하지 않습니다. 새로운 키를 발급받아 교체해주세요.");
-    }
     
-    console.log(`[API Call] Model: ${GEMINI_MODEL}, Prompt length: ${prompt.length} chars`);
+    console.log(`[Cloud Function Call] Model: gemini-2.5-flash, Prompt length: ${prompt.length} chars`);
     
-    const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
-        {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                contents: [{ role: "user", parts: [{ text: prompt }] }],
-                // 💥 'generationConfig'로 JSON 형식 응답을 강제합니다.
-                generationConfig: { 
-                    responseMimeType: "application/json", 
-                    temperature: 0.1 
-                }
-            }),
+    try {
+        // ⭐️ 5. Google API (fetch) 대신 Firebase Function을 호출
+        const result = await callGeminiAPIFunction({ prompt: prompt });
+        
+        // ⭐️ 6. Cloud Function이 반환한 '텍스트' 데이터를 가져옴 (result.data)
+        const responseText = result.data; 
+
+        if (!responseText || typeof responseText !== 'string') {
+            console.error("Cloud Function에서 유효하지 않은 응답을 받았습니다:", result.data);
+            throw new Error("AI(Cloud Function)로부터 유효한 응답 텍스트를 받지 못했습니다.");
         }
-    );
-    
-    if (!response.ok) {
-        const errorBody = await response.json();
-        console.error("Gemini API Error:", errorBody);
-        throw new Error(`Gemini API 호출 실패: ${response.status} - ${errorBody.error?.message || '알 수 없는 오류'}`);
+        
+        // ⭐️ 7. 응답 텍스트를 파싱 함수에 넘김 (기존과 동일)
+        return parseAIResponse(responseText); 
+
+    } catch (error) {
+        console.error("Firebase Function 호출 오류:", error);
+        throw new Error(`AI 분석(Cloud Function) 호출 실패: ${error.code} - ${error.message}`);
     }
-
-    const data = await response.json();
-    const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (!responseText) {
-        throw new Error("AI로부터 유효한 응답 텍스트를 받지 못했습니다.");
-    }
-
-    // ⭐️ 3. 응답 텍스트를 파싱 함수에 넘깁니다.
-    return parseAIResponse(responseText); 
 }
 
-// AI 프롬프트에 사용되는 헬퍼 함수 (유지)
+// -------------------------------------------------------------------
+// (getDifficulty, getAIAnalysis, getOverallAIAnalysis, getQuestionUnitMapping 함수는
+//  수정할 필요 없이 기존과 100% 동일합니다.)
+// -------------------------------------------------------------------
+
+// (헬퍼 함수 - 변경 없음)
 function getDifficulty(qNum, selectedClass) {
     if (!selectedClass) return '정보 없음';
-    // ⭐️ PDF 예시의 난이도 체계를 단순화하여 적용
     if (selectedClass.includes('고2') || selectedClass.includes('고1')) {
         if (qNum >= 14) return '어려움';
         if (qNum >= 6) return '보통';
@@ -83,9 +77,7 @@ function getDifficulty(qNum, selectedClass) {
     }
 }
 
-// --- AI 분석 함수들 (export) ---
-
-// ⭐️ 4. getAIAnalysis (학생 개별 분석)
+// (학생 개별 분석 - 변경 없음)
 export async function getAIAnalysis(student, data, selectedClass, questionUnitMap) {
     const incorrectAnswers = student.answers.filter(a => !a.isCorrect);
     if (incorrectAnswers.length === 0) {
@@ -134,11 +126,12 @@ export async function getAIAnalysis(student, data, selectedClass, questionUnitMa
             ]
         }
     `;
-
-    return callGeminiAPI(prompt); // ⭐️ 실제 API 호출
+    
+    // (내부에서 callGeminiAPI(prompt)를 호출하지만, 그 함수가 바뀌었으므로 안전)
+    return callGeminiAPI(prompt);
 }
 
-// ⭐️ 5. getOverallAIAnalysis (반 전체 분석)
+// (반 전체 분석 - 변경 없음)
 export async function getOverallAIAnalysis(data) {
     const highErrorRateQuestions = [];
     data.studentData.answerRates.forEach((rate, i) => {
@@ -186,10 +179,10 @@ export async function getOverallAIAnalysis(data) {
         }
     `;
     
-    return callGeminiAPI(prompt); // ⭐️ 실제 API 호출
+    return callGeminiAPI(prompt);
 }
 
-// ⭐️ 6. getQuestionUnitMapping (단원 매핑)
+// (단원 매핑 - 변경 없음)
 export async function getQuestionUnitMapping(data) {
     const prompt = `
         다음은 시험지 전체 텍스트입니다. 1번부터 ${data.studentData.questionCount}번까지 각 문항이 다루는 가장 **세부적이고 정확한 핵심 수학 개념**을 시험지 텍스트(문제 내용, 표지의 단원 정보 등)를 분석하여 찾아주세요.
@@ -209,5 +202,5 @@ export async function getQuestionUnitMapping(data) {
             ]
         }
     `; 
-    return callGeminiAPI(prompt); // ⭐️ 실제 API 호출
+    return callGeminiAPI(prompt);
 }

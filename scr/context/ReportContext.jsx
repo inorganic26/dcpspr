@@ -16,15 +16,13 @@ export const ReportProvider = ({ children }) => {
     const [selectedStudent, setSelectedStudent] = useState(null);
 
     // UI 상태
-    const [initialLoading, setInitialLoading] = useState(true);
+    const [initialLoading, setInitialLoading] = useState(false); // ⭐️ false로 변경 (로그인 후 로딩)
     const [processing, setProcessing] = useState(false); 
     const [aiLoading, setAiLoading] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
     
-    // ⭐️⭐️⭐️ [추가된 부분] ⭐️⭐️⭐️
-    // App.jsx와 useFirebase.js에서 사용할 인증 오류 상태
-    const [authError, setAuthError] = useState(null); 
-    // ⭐️⭐️⭐️ [추가 완료] ⭐️⭐️⭐️
+    // ⭐️ [변경] 인증 상태: authError 대신 로그인한 교사 정보 저장
+    const [currentTeacher, setCurrentTeacher] = useState(null); 
 
     // 리포트/차트 상태
     const [reportHTML, setReportHTML] = useState('');
@@ -42,9 +40,8 @@ export const ReportProvider = ({ children }) => {
         selectedStudent, setSelectedStudent,
         errorMessage, setErrorMessage,
         
-        // ⭐️⭐️⭐️ [추가된 부분] ⭐️⭐️⭐️
-        authError, setAuthError,
-        // ⭐️⭐️⭐️ [추가 완료] ⭐️⭐️⭐️
+        // ⭐️ [변경]
+        currentTeacher, setCurrentTeacher,
         
         initialLoading, setInitialLoading,
         processing, setProcessing,
@@ -56,9 +53,8 @@ export const ReportProvider = ({ children }) => {
         testData, currentPage, uploadDate, selectedClass, 
         selectedDate, selectedStudent, errorMessage,
         
-        // ⭐️⭐️⭐️ [추가된 부분] ⭐️⭐️⭐️
-        authError, 
-        // ⭐️⭐️⭐️ [추가 완료] ⭐️⭐️⭐️
+        // ⭐️ [변경]
+        currentTeacher, 
         
         initialLoading, processing, aiLoading,
         reportHTML, activeChart, reportCurrentPage
