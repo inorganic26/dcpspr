@@ -2,18 +2,18 @@
 
 import { useRef, useState, useCallback } from 'react';
 import { useReportContext } from '../context/ReportContext';
+// ⭐️ 이 파일은 fileParser.js에서 함수만 가져와야 합니다.
 import { pairFiles, parsePDF, parseCSV, parseXLSX, processStudentData } from '../lib/fileParser'; 
-// ⭐️ [수정] getAIAnalysis 임포트 제거
 import { getOverallAIAnalysis, getQuestionUnitMapping } from '../lib/ai.js'; 
-import pLimit from 'p-limit'; // ⭐️ p-limit은 이제 공통 분석 2개만 동시 실행 (필요시 pLimit 제거 가능)
+import pLimit from 'p-limit'; 
 
-const limit = pLimit(5); // (이 값은 이제 큰 의미가 없지만 유지합니다)
+const limit = pLimit(5); 
 
-// ⭐️ [수정] processClassBatch에서 개별 학생 분석 로직 '완전 제거'
 async function processClassBatch(className, classFiles, uploadDate, setErrorMessage) {
     const { pdf, spreadsheet } = classFiles;
 
     setErrorMessage(`'${className}' 파일 파싱 중...`);
+    // ⭐️ 여기서 parsePDF를 호출합니다.
     const pdfText = await parsePDF(pdf);
     const spreadsheetData = spreadsheet.name.endsWith('.csv') ? 
         await parseCSV(spreadsheet) : 
@@ -42,17 +42,6 @@ async function processClassBatch(className, classFiles, uploadDate, setErrorMess
     if (!unitMap || !unitMap.question_units) {
         throw new Error(`'${className}'의 문항-단원 맵(unitMap) 생성에 실패했습니다. AI 분석을 중단합니다.`);
     }
-
-    // --------------------------------------------------------
-    // ⭐️ [제거] Step 2/3: 학생 개별 분석 로직 (전체 삭제)
-    //
-    //   console.log(`[${className}] Step 2/3: 학생 ${studentData.students.length}명 개별 분석 병렬 시작...`);
-    //   setErrorMessage(`'${className}' 학생 ${studentData.students.length}명 개별 분석 중... (2/3)`);
-    //
-    //   const studentPromises = studentData.students.map(...);
-    //   const studentAiResults = await Promise.all(studentPromises);
-    //   studentData.students.forEach(...);
-    // --------------------------------------------------------
 
     console.log(`[${className}] Step 2/2: 공통 분석 완료.`);
     return dataForThisDate;
@@ -85,7 +74,6 @@ export const useFileProcessor = ({ saveDataToFirestore }) => {
     };
 
     const handleFileProcess = useCallback(async () => {
-        // ⭐️ [수정] currentTeacher.id가 아닌 currentTeacher 객체 자체로 확인
         if (!currentTeacher) { 
             setErrorMessage('로그인이 필요합니다. 앱을 새로고침하여 다시 로그인해주세요.');
             return;
@@ -143,7 +131,6 @@ export const useFileProcessor = ({ saveDataToFirestore }) => {
         try {
             setErrorMessage('모든 분석 완료! DB에 저장 중...');
             
-            // ⭐️ [수정] saveDataToFirestore는 이제 '공용' 데이터에 저장
             await saveDataToFirestore(allAnalysedData); 
             
             setTestData(prevData => {

@@ -12,9 +12,9 @@ import { useReportNavigation } from './hooks/useReportNavigation';
 import { signInAnonymously } from 'firebase/auth';
 import { auth } from './lib/firebaseConfig'; 
 
-import { Home, ArrowLeft, UploadCloud, FileText, Loader, TriangleAlert, Save, PlusCircle, CalendarDays, LogOut, User } from 'lucide-react';
+import { Home, ArrowLeft, UploadCloud, FileText, Loader, TriangleAlert, Save, PlusCircle, CalendarDays, LogOut, User, Trash2 } from 'lucide-react';
 
-// ... (Page1_Upload ~ Page4_ReportSelect 컴포넌트는 기존과 동일) ...
+// ... (Page1_Upload, Page2_ClassSelect, Page3_DateSelect 컴포넌트는 기존과 동일) ...
 const Page1_Upload = ({ handleFileChange, handleFileProcess, fileInputRef, selectedFiles, handleFileDrop }) => { 
     // ... (이 컴포넌트의 코드는 이전과 동일) ...
     const { 
@@ -92,9 +92,8 @@ const Page1_Upload = ({ handleFileChange, handleFileProcess, fileInputRef, selec
         </div>
     );
 };
-const Page2_ClassSelect = () => { 
-    // ... (이 컴포넌트의 코드는 이전과 동일) ...
-    const { testData, selectedDate, setSelectedClass, showPage } = useReportContext();
+const Page2_ClassSelect = ({ handleDeleteClass, selectedDate }) => { 
+    const { testData, setSelectedClass, showPage } = useReportContext();
     const classesForDate = Object.keys(testData).filter(className => testData[className] && testData[className][selectedDate]);
     return (
         <div className="card">
@@ -102,47 +101,123 @@ const Page2_ClassSelect = () => {
             <div id="classButtons" className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {classesForDate.length > 0 ? (
                     classesForDate.map(className => (
-                        <button key={className} className="btn btn-secondary" onClick={() => { setSelectedClass(className); showPage('page4'); }}>{className}</button>
+                        <div key={className} className="relative flex w-full">
+                            <button 
+                                className="btn btn-secondary w-full text-left pr-12" 
+                                onClick={() => { setSelectedClass(className); showPage('page4'); }}
+                            >
+                                {className}
+                            </button>
+                            <button 
+                                className="absolute right-1 top-1 bottom-1 btn btn-secondary h-auto px-2 text-red-500 hover:bg-red-100 hover:border-red-300" 
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteClass(className, selectedDate); 
+                                }}
+                                title={`${className} 데이터 삭제`}
+                            >
+                                <Trash2 size={18} />
+                            </button>
+                        </div>
                     ))
                 ) : ( <p className="text-center text-gray-500 col-span-full">선택한 날짜에 해당하는 데이터가 없습니다.</p> )}
             </div>
         </div>
     );
 };
-const Page3_DateSelect = () => { 
-    // ... (이 컴포넌트의 코드는 이전과 동일) ...
+const Page3_DateSelect = ({ handleDeleteDate }) => { 
     const { testData, setSelectedDate, showPage } = useReportContext();
     const allDates = new Set();
-    Object.values(testData).forEach(classData => { Object.keys(classData).forEach(date => { allDates.add(date); }); });
+    Object.values(testData).forEach(classData => { 
+        if (classData) { 
+            Object.keys(classData).forEach(date => { allDates.add(date); }); 
+        }
+    });
     const uniqueDates = Array.from(allDates);
+
     return (
         <div className="card">
             <h2 className="text-2xl font-bold text-center mb-6 text-gray-700">시험 날짜 선택</h2>
-            <div id="dateButtons" className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div id="dateButtons" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {uniqueDates.length > 0 ? (
                     uniqueDates.map(date => (
-                        <button key={date} className="btn btn-secondary" onClick={() => { setSelectedDate(date); showPage('page2'); }}>{date}</button>
+                        <div key={date} className="relative flex w-full">
+                            <button 
+                                className="btn btn-secondary w-full text-left pr-12" 
+                                onClick={() => { setSelectedDate(date); showPage('page2'); }}
+                            >
+                                {date}
+                            </button>
+                            <button 
+                                className="absolute right-1 top-1 bottom-1 btn btn-secondary h-auto px-2 text-red-500 hover:bg-red-100 hover:border-red-300" 
+                                onClick={(e) => {
+                                    e.stopPropagation(); 
+                                    handleDeleteDate(date);
+                                }}
+                                title={`${date} 데이터 삭제`}
+                            >
+                                <Trash2 size={18} />
+                            </button>
+                        </div>
                     ))
-                ) : ( <p className="text-center text-gray-500 col-span-full py-8">저장된 데이터가 없습니다. <br /> '처음으로' 버튼을 눌러 데이터를 추가해주세요.</p> )}
+                ) : ( 
+                    <p className="text-center text-gray-500 col-span-full py-8">저장된 데이터가 없습니다. <br /> '처음으로' 버튼을 눌러 데이터를 추가해주세요.</p> 
+                )}
             </div>
         </div>
     );
 };
-const Page4_ReportSelect = () => { 
-    // ... (이 컴포넌트의 코드는 이전과 동일) ...
-    const { testData, selectedClass, selectedDate, selectedStudent, setSelectedStudent, showPage } = useReportContext();
+
+
+// ⭐️ [수정] Page4_ReportSelect (레이아웃 변경)
+const Page4_ReportSelect = ({ handleDeleteStudent, selectedClass, selectedDate }) => { 
+    const { testData, selectedStudent, setSelectedStudent, showPage } = useReportContext();
+    const students = testData[selectedClass]?.[selectedDate]?.studentData?.students || [];
+    
     return (
         <div className="card">
             <h2 className="text-2xl font-bold text-center mb-6">리포트 선택</h2>
-            <div id="reportSelectionButtons" className="flex flex-wrap justify-center gap-3">
-                <button className={`btn btn-secondary ${selectedStudent === null ? 'btn-nav-active' : ''}`} onClick={() => { setSelectedStudent(null); showPage('page5'); }}>반 전체</button>
-                {testData[selectedClass]?.[selectedDate]?.studentData?.students.map(student => (
-                    <button key={student.name} className={`btn btn-secondary ${selectedStudent === student.name ? 'btn-nav-active' : ''}`} onClick={() => { setSelectedStudent(student.name); showPage('page5'); }}>{student.name}</button>
+            
+            {/* ⭐️ [수정] flex flex-wrap -> grid ... gap-3 로 변경 */}
+            <div id="reportSelectionButtons" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                
+                {/* 반 전체 버튼 (삭제 없음) */}
+                <button 
+                    className={`btn btn-secondary w-full ${selectedStudent === null ? 'btn-nav-active' : ''}`} // ⭐️ w-full 추가
+                    onClick={() => { setSelectedStudent(null); showPage('page5'); }}
+                >
+                    반 전체
+                </button>
+                
+                {students.map(student => (
+                    // ⭐️ [수정] 이 div는 이제 grid 아이템이 됨 (relative flex w-full)
+                    <div key={student.name} className="relative flex"> 
+                        <button 
+                            // ⭐️ [수정] w-full, text-left 추가
+                            className={`btn btn-secondary w-full text-left pr-10 ${selectedStudent === student.name ? 'btn-nav-active' : ''}`} 
+                            onClick={() => { setSelectedStudent(student.name); showPage('page5'); }}
+                        >
+                            {student.name}
+                        </button>
+                        <button 
+                            className="absolute right-1 top-1 bottom-1 btn btn-secondary h-auto px-2 text-red-500 hover:bg-red-100 hover:border-red-300"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteStudent(student.name, selectedClass, selectedDate); 
+                            }}
+                            title={`${student.name} 학생 데이터 삭제`}
+                        >
+                            <Trash2 size={16} />
+                        </button>
+                    </div>
                 ))}
             </div>
         </div>
     );
 };
+
+
+// ... (Page5_ReportDisplay, LoginPage, App 컴포넌트 등 나머지는 모두 동일) ...
 const Page5_ReportDisplay = () => { 
     // ... (이 컴포넌트의 코드는 이전과 동일) ...
     const { reportHTML } = useReportContext();
@@ -158,9 +233,6 @@ const Page5_ReportDisplay = () => {
         </div>
     );
 };
-
-
-// ... (LoginPage 컴포넌트는 기존과 동일) ...
 const LoginPage = ({ onLogin, onRegister, loginError, isLoggingIn, setLoginError }) => {
     // ... (이 컴포넌트의 코드는 이전과 동일) ...
     const [name, setName] = useState('');
@@ -220,6 +292,7 @@ const App = () => {
         initialLoading, setInitialLoading,
         errorMessage, setErrorMessage,
         currentTeacher, setCurrentTeacher,
+        testData, 
         setTestData, showPage
     } = useReportContext();
     
@@ -230,7 +303,6 @@ const App = () => {
     const { fileInputRef, selectedFiles, handleFileChange, handleFileProcess, handleFileDrop } = useFileProcessor({ saveDataToFirestore });
     const { goBack, goHome } = useReportNavigation();
     
-    // ⭐️ [수정] useReportGenerator에 DB저장 함수와 상태 설정 함수를 전달
     useReportGenerator({ saveDataToFirestore, setTestData }); 
     
     const { handlePdfSave } = useChartAndPDF(); 
@@ -293,17 +365,17 @@ const App = () => {
     
     // (performSuccessfulLogin 핸들러는 변경 없음)
     const performSuccessfulLogin = async (teacher) => {
-        setCurrentTeacher(teacher); // Context에 선생님 정보 저장
-        setInitialLoading(true); // "로딩 중" 화면 표시
+        setCurrentTeacher(teacher); 
+        setInitialLoading(true); 
         
         try {
             const loadedData = await loadDataFromFirestore(); 
-            setTestData(loadedData || {}); // Context에 공용 데이터 저장
+            setTestData(loadedData || {}); 
 
         } catch (error) {
             console.error("데이터 로드 실패:", error);
             setLoginError("로그인은 성공했으나 데이터 로드에 실패했습니다: " + error.message);
-            setTestData({}); // 빈 데이터로 설정
+            setTestData({}); 
 
         } finally {
             setInitialLoading(false); 
@@ -317,9 +389,94 @@ const App = () => {
         showPage('page1');
         setErrorMessage('');
     };
+    
+    // (handleDeleteDate 핸들러는 변경 없음 - 날짜별 삭제)
+    const handleDeleteDate = async (dateToDelete) => {
+        if (!window.confirm(`'${dateToDelete}'의 모든 분석 데이터를 정말 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`)) {
+            return;
+        }
+
+        setErrorMessage('삭제 중...'); 
+        setInitialLoading(true); 
+
+        try {
+            const newTestData = JSON.parse(JSON.stringify(testData));
+            
+            Object.keys(newTestData).forEach(className => {
+                if (newTestData[className] && newTestData[className][dateToDelete]) {
+                    delete newTestData[className][dateToDelete];
+                    
+                    if (Object.keys(newTestData[className]).length === 0) {
+                        delete newTestData[className];
+                    }
+                }
+            });
+
+            await saveDataToFirestore(newTestData);
+            setTestData(newTestData);
+            setErrorMessage(''); 
+            
+        } catch (error) {
+            console.error("데이터 삭제 실패:", error);
+            setErrorMessage("데이터 삭제 중 오류가 발생했습니다: " + error.message);
+        } finally {
+            setInitialLoading(false); 
+        }
+    };
+    
+    // (handleDeleteClass 핸들러는 변경 없음 - 반별 삭제)
+    const handleDeleteClass = async (className, date) => {
+        if (!window.confirm(`'${date}'의 '${className}'반 데이터를 정말 삭제하시겠습니까?`)) {
+            return;
+        }
+        setInitialLoading(true); 
+        try {
+            const newTestData = JSON.parse(JSON.stringify(testData));
+            if (newTestData[className] && newTestData[className][date]) {
+                delete newTestData[className][date]; 
+                
+                if (Object.keys(newTestData[className]).length === 0) {
+                    delete newTestData[className];
+                }
+                
+                await saveDataToFirestore(newTestData);
+                setTestData(newTestData);
+            }
+        } catch (error) {
+            setErrorMessage("반 데이터 삭제 중 오류: " + error.message);
+        } finally {
+            setInitialLoading(false);
+        }
+    };
+
+    // (handleDeleteStudent 핸들러는 변경 없음 - 학생별 삭제)
+    const handleDeleteStudent = async (studentName, className, date) => {
+        if (!window.confirm(`'${date}' - '${className}'반의 '${studentName}' 학생 데이터를 정말 삭제하시겠습니까?\n\n(참고: 학생 삭제 시 반 전체 평균이 자동으로 재계산되지는 않습니다.)`)) {
+            return;
+        }
+        setInitialLoading(true); 
+        try {
+            const newTestData = JSON.parse(JSON.stringify(testData));
+            const students = newTestData[className]?.[date]?.studentData?.students;
+            
+            if (students) {
+                const studentIndex = students.findIndex(s => s.name === studentName);
+                if (studentIndex > -1) {
+                    students.splice(studentIndex, 1); 
+                    
+                    await saveDataToFirestore(newTestData);
+                    setTestData(newTestData);
+                }
+            }
+        } catch (error) {
+            setErrorMessage("학생 데이터 삭제 중 오류: " + error.message);
+        } finally {
+            setInitialLoading(false);
+        }
+    };
 
 
-    // (renderNav, renderPage, renderGlobalError 렌더링 로직은 변경 없음)
+    // (renderNav, renderGlobalError 렌더링 로직은 변경 없음)
     
     const renderNav = () => {
         if (!currentTeacher || currentPage === 'page1') return null;
@@ -378,12 +535,12 @@ const App = () => {
             return (
                 <div id="initialLoader" className="card p-8 text-center mt-20">
                     <div className="spinner mx-auto"></div>
-                    <p className="mt-4 text-gray-600">{currentTeacher.name} 선생님의 공용 데이터를 불러오는 중입니다...</p>
+                    <p className="mt-4 text-gray-600">데이터를 처리 중입니다...</p> 
                 </div>
             );
         }
         
-        // (페이지 렌더링 switch 문)
+        // (renderPage 스위치 문은 변경 없음)
         switch (currentPage) {
             case 'page1': 
                 return <Page1_Upload 
@@ -393,9 +550,21 @@ const App = () => {
                             selectedFiles={selectedFiles} 
                             handleFileDrop={handleFileDrop}
                         />;
-            case 'page2': return <Page2_ClassSelect />;
-            case 'page3': return <Page3_DateSelect />;
-            case 'page4': return <Page4_ReportSelect />;
+            case 'page2': 
+                return <Page2_ClassSelect 
+                            handleDeleteClass={handleDeleteClass} 
+                            selectedDate={selectedDate}         
+                        />;
+            case 'page3': 
+                return <Page3_DateSelect 
+                            handleDeleteDate={handleDeleteDate} 
+                        />;
+            case 'page4': 
+                return <Page4_ReportSelect 
+                            handleDeleteStudent={handleDeleteStudent} 
+                            selectedClass={selectedClass}         
+                            selectedDate={selectedDate}           
+                        />;
             case 'page5': return <Page5_ReportDisplay />;
             default:
                 return <Page1_Upload 

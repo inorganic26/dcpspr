@@ -1,12 +1,16 @@
+// scr/main.jsx
+
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
 import './index.css';
-import { ReportProvider } from './context/ReportContext.jsx'; // ⭐️ ReportProvider를 불러옵니다.
+import { ReportProvider } from './context/ReportContext.jsx';
+
+// ⭐️ [수정] PDF.js 워커 설정 추가
+// ⭐️ [수정] 끝
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    {/* ⭐️ App 컴포넌트 전체를 ReportProvider로 감싸줍니다. */}
     <ReportProvider>
       <App />
     </ReportProvider>
