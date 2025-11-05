@@ -1,3 +1,5 @@
+// scr/lib/reportUtils.js
+
 import Chart from 'chart.js/auto';
 
 /**
@@ -30,21 +32,24 @@ function getDifficulty(qNum, selectedClass) {
 }
 
 /**
- * ⭐️ [오류 수정]
- * 이 함수를 다른 함수들 밖으로 꺼내서,
- * generateOverallReportHTML와 generateIndividualReportHTML 모두가 접근할 수 있게 합니다.
+ * ⭐️ [수정] '여백 최소화' + '높이 정렬(start)' 버전으로 함수 교체
  */
 function generateOverallFeaturesHTML(data, aiOverallAnalysis) {
     const submittedStudents = data.studentData.students.filter(s => s.submitted);
     let featuresHtml = '';
-    
+
     if (submittedStudents.length === 0) {
-        featuresHtml = `<div class="card p-8 printable-section"><h3 class="section-title">💡 반 전체 주요 특징</h3><p class="text-center text-gray-500">제출한 학생이 없어 분석할 데이터가 없습니다.</p></div>`;
+        // 🔧 여백 최소화 버전 (p-3, mb-2, text-sm)
+        featuresHtml = `
+            <div class="card p-3 printable-section mb-2">
+                <h3 class="text-xl font-bold text-gray-800 mb-2">💡 반 전체 주요 특징</h3>
+                <p class="text-center text-gray-500 text-sm leading-tight">제출한 학생이 없어 분석할 데이터가 없습니다.</p>
+            </div>`;
     } else {
         const scores = submittedStudents.map(s => s.score);
         const maxScore = Math.max(...scores);
         const minScore = Math.min(...scores);
-        
+
         const allCorrectQuestions = [];
         data.studentData.answerRates.forEach((rate, i) => {
             if (rate === 100) allCorrectQuestions.push(i + 1);
@@ -55,23 +60,31 @@ function generateOverallFeaturesHTML(data, aiOverallAnalysis) {
             if (rate <= 40) highErrorRateQuestions.push({ qNum: i + 1, rate: rate });
         });
 
+        // 🔧 여백 최소화 버전 (p-3, mb-2, gap-2, p-1, text-sm)
+        // ⭐️ [수정] style="align-items: start;" 를 다시 추가하여 박스 높이가 강제로 늘어나는 것을 방지합니다.
         featuresHtml = `
-            <div id="pdf-section-features" class="card p-8 printable-section">
-                <h3 class="section-title">💡 반 전체 주요 특징</h3>
-                <div class="grid md:grid-cols-3 gap-6">
-                    <div class="bg-indigo-50 p-4 rounded-lg border border-indigo-200">
-                        <h4 class="font-semibold text-indigo-800">📈 점수 분포</h4>
-                        <p class="text-indigo-700 mt-2">최고 ${maxScore}점, 최저 ${minScore}점, 평균 ${data.studentData.classAverage}점</p>
+            <div id="pdf-section-features" class="card p-3 printable-section mb-2">
+                <h3 class="text-xl font-bold text-gray-800 mb-2">💡 반 전체 주요 특징</h3>
+                <div class="grid md:grid-cols-3 gap-2" style="align-items: start;">
+                    <div class="bg-indigo-50 rounded border border-indigo-200 p-1">
+                        <h4 class="font-semibold text-indigo-800 text-sm mb-0.5">📈 점수 분포</h4>
+                        <p class="text-indigo-700 text-sm leading-tight">
+                            최고 ${maxScore}점, 최저 ${minScore}점, 평균 ${data.studentData.classAverage}점
+                        </p>
                     </div>
-                    <div class="bg-green-50 p-4 rounded-lg border border-green-200">
-                        <h4 class="font-semibold text-green-800">✅ 전원 정답 문항</h4>
-                        <p class="text-green-700 mt-2">${allCorrectQuestions.length > 0 ? allCorrectQuestions.map(q => `${q}번`).join(', ') : '없음'}</p>
+                    <div class="bg-green-50 rounded border border-green-200 p-1">
+                        <h4 class="font-semibold text-green-800 text-sm mb-0.5">✅ 전원 정답 문항</h4>
+                        <p class="text-green-700 text-sm leading-tight">
+                            ${allCorrectQuestions.length > 0 ? allCorrectQuestions.map(q => `${q}번`).join(', ') : '없음'}
+                        </p>
                     </div>
-                    <div class="bg-red-50 p-4 rounded-lg border border-red-200">
-                        <h4 class="font-semibold text-red-800">❌ 오답률 높은 문항 (40% 이하)</h4>
-                        ${highErrorRateQuestions.length > 0 
-                            ? highErrorRateQuestions.map(q => `<span class="text-red-700">${q.qNum}번 (${q.rate}%)</span>`).join(', ') 
-                            : '<p class="text-red-700 mt-2">없음</p>'}
+                    <div class="bg-red-50 rounded border border-red-200 p-1">
+                        <h4 class="font-semibold text-red-800 text-sm mb-0.5">❌ 오답률 높은 문항 (40% 이하)</h4>
+                        <p class="text-red-700 text-sm leading-tight break-words">
+                            ${highErrorRateQuestions.length > 0 
+                                ? highErrorRateQuestions.map(q => `${q.qNum}번(${q.rate}%)`).join(', ')
+                                : '없음'}
+                        </p>
                     </div>
                 </div>
             </div>
@@ -89,20 +102,27 @@ function generateOverallFeaturesHTML(data, aiOverallAnalysis) {
 export function generateOverallReportHTML(data, aiOverallAnalysis, selectedClass, selectedDate) {
     
     // 1-1. 반 전체 주요 특징 (상단 3개 박스)
-    // ⭐️ [오류 수정] 이제 외부 함수를 호출합니다.
-    const featuresHtml = generateOverallFeaturesHTML(data, aiOverallAnalysis);
+    const featuresHtml = generateOverallFeaturesHTML(data, aiOverallAnalysis); // ⭐️ '여백 최소화' + '높이 정렬(start)' 버전 적용됨
 
     // 1-2. AI 종합 분석 (차트 + 3개 분석)
-    // aiOverallAnalysis가 로드되었는지 확인
-    // [수정] .replace(/\n/g, ' ')를 추가하여 줄바꿈을 공백으로 변경
     const summaryContent = aiOverallAnalysis ? aiOverallAnalysis.summary.replace(/\n/g, ' ') : '<div class="ai-spinner"></div>';
     const weaknessesContent = aiOverallAnalysis ? aiOverallAnalysis.common_weaknesses.replace(/\n/g, ' ') : '<div class="ai-spinner"></div>';
     const recommendationsContent = aiOverallAnalysis ? aiOverallAnalysis.recommendations.replace(/\n/g, ' ') : '<div class="ai-spinner"></div>';
 
-    const aiAnalysisHtml = `
-        <div id="pdf-section-ai-overall" class="card p-8 printable-section">
-            <h3 class="section-title">🤖 반 전체 AI 종합 분석</h3>
-            <div class="w-full mb-8"><canvas id="scoreChart"></canvas></div>
+    // ⭐️ [수정] 'aiAnalysisHtml'을 'scoreChartHtml'과 'aiBoxesHtml'로 분리합니다.
+
+    // 1-2a. 점수 차트 (1페이지용)
+    const scoreChartHtml = `
+        <div id="pdf-section-chart-overall" class="card p-6 printable-section" style="page-break-inside: avoid;">
+            <h3 class="text-2xl font-bold text-gray-800 mb-4">📊 반 전체 점수 분포</h3>
+            <div class="w-full"><canvas id="scoreChart"></canvas></div>
+        </div>
+    `;
+
+    // 1-2b. AI 종합 분석 박스 (2페이지용)
+    const aiBoxesHtml = `
+        <div id="pdf-section-ai-boxes-overall" class="card p-6 printable-section" style="page-break-inside: avoid;">
+            <h3 class="text-2xl font-bold text-gray-800 mb-4">🤖 반 전체 AI 종합 분석</h3>
             <div class="space-y-6">
                 <div class="p-6 rounded-lg bg-gray-100 border border-gray-200">
                     <h4 class="font-bold text-lg text-gray-800 mb-2">📊 종합 총평</h4>
@@ -137,9 +157,10 @@ export function generateOverallReportHTML(data, aiOverallAnalysis, selectedClass
         }
     }
 
+    // (page-break-inside: avoid 제거 - 테이블은 잘려도 됨)
     const solutionsHtml = `
-        <div id="pdf-section-solutions-overall" class="card p-8 printable-section">
-            <h3 class="section-title">🔍 주요 오답 문항 분석 (AI 기반)</h3>
+        <div id="pdf-section-solutions-overall" class="card p-6 printable-section">
+            <h3 class="text-2xl font-bold text-gray-800 mb-4">🔍 주요 오답 문항 분석 (AI 기반)</h3>
             <div class="overflow-x-auto">
                 <table class="w-full text-sm text-left text-gray-500">
                     <thead class="text-xs text-gray-700 uppercase bg-gray-50">
@@ -159,7 +180,7 @@ export function generateOverallReportHTML(data, aiOverallAnalysis, selectedClass
     `;
 
     // 1-4. HTML 조합
-    // (페이지네이션을 위해 report-page 클래스로 래핑 - App.jsx에서 관리)
+    // ⭐️ [수정] '종합 분석' 페이지를 '특징+차트' / 'AI분석' 2페이지로 분리
     return `
         <div class="text-center my-4 print:hidden">
             <h2 class="text-3xl font-bold text-gray-800">${selectedClass} ${selectedDate}</h2>
@@ -168,9 +189,13 @@ export function generateOverallReportHTML(data, aiOverallAnalysis, selectedClass
         
         <div class="report-page active" data-page-name="종합 분석">
             ${featuresHtml}
-            ${aiAnalysisHtml}
+            ${scoreChartHtml}
         </div>
         
+        <div class="report-page" data-page-name="AI 분석">
+            ${aiBoxesHtml}
+        </div>
+
         <div class="report-page" data-page-name="오답 문항 분석">
             ${solutionsHtml}
         </div>
@@ -199,15 +224,13 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
     }
 
     // 2-2. 반 전체 주요 특징 (상단 3개 박스) - 재사용
-    // ⭐️ [오류 수정] 이제 외부 함수를 호출합니다.
-    const featuresHtml = generateOverallFeaturesHTML(data, aiOverallAnalysis);
+    const featuresHtml = generateOverallFeaturesHTML(data, aiOverallAnalysis); // ⭐️ '여백 최소화' + '높이 정렬(start)' 버전 적용됨
 
     // 2-3. 강사 코멘트
-    // ⭐️ [디자인 수정]
-    // '강점' 박스와 유사하게 파란색 테마(bg-blue-50)를 적용하여 디자인 통일성 확보
+    // (page-break-inside: avoid 제거)
     const commentHtml = `
-        <div id="pdf-section-comment" class="card p-8 printable-section">
-            <h3 class="section-title">👨‍🏫 담당 강사 코멘트</h3>
+        <div id="pdf-section-comment" class="card p-6 printable-section">
+            <h3 class="text-2xl font-bold text-gray-800 mb-4">👨‍🏫 담당 강사 코멘트</h3>
             <div class="p-6 rounded-lg bg-blue-50 border border-blue-200">
                 <textarea id="instructorComment" 
                     class="w-full h-40 p-3 bg-white border border-blue-200 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none transition duration-150 ease-in-out" 
@@ -217,27 +240,24 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
     `;
 
     // 2-4. AI 종합 분석 (차트 + 3개 분석)
-    // aiAnalysis가 로드되었는지 확인
-    // [수정] .replace(/\n/g, ' ')를 추가하여 줄바꿈을 공백으로 변경
     const strengthsContent = aiAnalysis ? aiAnalysis.strengths.replace(/\n/g, ' ') : '<div class="ai-spinner"></div>';
     const weaknessesContent = aiAnalysis ? aiAnalysis.weaknesses.replace(/\n/g, ' ') : '<div class="ai-spinner"></div>';
     const recommendationsContent = aiAnalysis ? aiAnalysis.recommendations.replace(/\n/g, ' ') : '<div class="ai-spinner"></div>';
     
-    // ⭐️⭐️⭐️ [사용자 요청] 페이지 분리 ⭐️⭐️⭐️
-
     // 2-4a. 점수 차트 (1페이지용)
+    // (page-break-inside: avoid; 유지 - 차트는 통째로)
     const scoreChartHtml = `
-        <div id="pdf-section-chart" class="card p-8 printable-section">
-            <h3 class="section-title">📊 ${student.name} 학생 점수 분포</h3>
+        <div id="pdf-section-chart" class="card p-6 printable-section" style="page-break-inside: avoid;">
+            <h3 class="text-2xl font-bold text-gray-800 mb-4">📊 ${student.name} 학생 점수 분포</h3>
             <div class="w-full"><canvas id="scoreChart"></canvas></div>
         </div>
     `;
 
     // 2-4b. AI 종합 분석 박스 (2페이지용)
-    // (이전 요청의 간격/패딩 축소를 원복하여 섹션 카드로 만듭니다)
+    // (page-break-inside: avoid; 유지 - AI 분석 박스들은 통째로)
     const aiAnalysisHtml = `
-        <div id="pdf-section-ai-boxes" class="card p-8 printable-section">
-            <h3 class="section-title">🤖 ${student.name} 학생 AI 종합 분석</h3>
+        <div id="pdf-section-ai-boxes" class="card p-6 printable-section" style="page-break-inside: avoid;">
+            <h3 class="text-2xl font-bold text-gray-800 mb-4">🤖 ${student.name} 학생 AI 종합 분석</h3>
             
             <div class="space-y-6">
                 <div class="p-6 rounded-lg bg-blue-50 border border-blue-200">
@@ -255,7 +275,6 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
             </div>
         </div>
     `;
-    // ⭐️⭐️⭐️ [수정 완료] ⭐️⭐️⭐️
 
     // 2-5. 단원 매핑 (AI 분석 결과 + 기본 맵)
     const unitMap = new Map();
@@ -275,9 +294,10 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
         </tr>
     `).join('');
 
+    // (page-break-inside: avoid 제거 - 테이블은 잘려도 됨)
     const errataHtml = `
-        <div id="pdf-section-errata" class="card p-8 printable-section">
-            <h3 class="section-title">📋 문항 정오표</h3>
+        <div id="pdf-section-errata" class="card p-6 printable-section">
+            <h3 class="text-2xl font-bold text-gray-800 mb-4">📋 문항 정오표</h3>
             <div class="overflow-x-auto">
                 <table class="w-full text-sm text-left text-gray-500">
                     <thead class="text-xs text-gray-700 uppercase bg-gray-50">
@@ -315,9 +335,10 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
         }
     }
     
+    // (page-break-inside: avoid 제거 - 테이블은 잘려도 됨)
     const solutionsHtml = `
-        <div id="pdf-section-solutions" class="card p-8 printable-section">
-            <h3 class="section-title">🔍 오답 분석 및 대응 방안 (AI 기반)</h3>
+        <div id="pdf-section-solutions" class="card p-6 printable-section">
+            <h3 class="text-2xl font-bold text-gray-800 mb-4">🔍 오답 분석 및 대응 방안 (AI 기반)</h3>
             <div class="overflow-x-auto">
                 <table class="w-full text-sm text-left text-gray-500">
                     <thead class="text-xs text-gray-700 uppercase bg-gray-50">
@@ -338,7 +359,6 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
     `;
 
     // 2-8. HTML 조합
-    // ⭐️⭐️⭐️ [사용자 요청] 페이지 재구성 ⭐️⭐️⭐️
     return `
         <div class="text-center my-4 print:hidden">
             <h2 class="text-3xl font-bold text-gray-800">${selectedClass} ${selectedDate}</h2>
@@ -348,22 +368,21 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
         <div class="report-page active" data-page-name="종합 분석">
             ${featuresHtml}
             ${commentHtml}
-            ${scoreChartHtml} {/* 1. 차트가 1페이지로 이동 */}
+            ${scoreChartHtml} {/* 1. 차트 (avoid 유지) */}
         </div>
         
         <div class="report-page" data-page-name="AI 분석">
-            ${aiAnalysisHtml} {/* 2. AI 박스가 2페이지로 이동 */}
+            ${aiAnalysisHtml} {/* 2. AI 박스 (avoid 유지) */}
         </div>
         
         <div class="report-page" data-page-name="문항 정오표">
-            ${errataHtml} {/* 3. 정오표가 3페이지로 이동 */}
+            ${errataHtml} {/* 3. 정오표 (avoid 제거) */}
         </div>
 
         <div class="report-page" data-page-name="오답 분석">
-            ${solutionsHtml} {/* 4. 오답 분석은 4페이지 */}
+            ${solutionsHtml} {/* 4. 오답 분석 (avoid 제거) */}
         </div>
     `;
-    // ⭐️⭐️⭐️ [수정 완료] ⭐️⭐️⭐️
 }
 
 
