@@ -78,14 +78,16 @@ function generateOverallFeaturesHTML(data, aiOverallAnalysis) {
                             ${allCorrectQuestions.length > 0 ? allCorrectQuestions.map(q => `${q}번`).join(', ') : '없음'}
                         </p>
                     </div>
-                    <div class="bg-red-50 rounded border border-red-200 p-1">
+                    {/* --- ⭐️ [수정] 붉은색 카드 높이 제어 (flex-col, max-h) --- */}
+                    <div class="bg-red-50 rounded border border-red-200 p-1 flex flex-col justify-between">
                         <h4 class="font-semibold text-red-800 text-sm mb-0.5">❌ 오답률 높은 문항 (40% 이하)</h4>
-                        <p class="text-red-700 text-sm leading-tight break-words">
+                        <div class="flex-1 overflow-y-auto text-red-700 text-sm leading-tight break-words max-h-[4rem]">
                             ${highErrorRateQuestions.length > 0 
                                 ? highErrorRateQuestions.map(q => `${q.qNum}번(${q.rate}%)`).join(', ')
                                 : '없음'}
-                        </p>
+                        </div>
                     </div>
+                    {/* --- [수정] 완료 --- */}
                 </div>
             </div>
         `;
@@ -102,7 +104,7 @@ function generateOverallFeaturesHTML(data, aiOverallAnalysis) {
 export function generateOverallReportHTML(data, aiOverallAnalysis, selectedClass, selectedDate) {
     
     // 1-1. 반 전체 주요 특징 (상단 3개 박스)
-    const featuresHtml = generateOverallFeaturesHTML(data, aiOverallAnalysis); // ⭐️ '여백 최소화' + '높이 정렬(start)' 버전 적용됨
+    const featuresHtml = generateOverallFeaturesHTML(data, aiOverallAnalysis); // ⭐️ '여백 최소화' + '높이 정렬(start)' + '카드 높이 제어' 버전 적용됨
 
     // 1-2. AI 종합 분석 (차트 + 3개 분석)
     const summaryContent = aiOverallAnalysis ? aiOverallAnalysis.summary.replace(/\n/g, ' ') : '<div class="ai-spinner"></div>';
@@ -224,7 +226,7 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
     }
 
     // 2-2. 반 전체 주요 특징 (상단 3개 박스) - 재사용
-    const featuresHtml = generateOverallFeaturesHTML(data, aiOverallAnalysis); // ⭐️ '여백 최소화' + '높이 정렬(start)' 버전 적용됨
+    const featuresHtml = generateOverallFeaturesHTML(data, aiOverallAnalysis); // ⭐️ '여백 최소화' + '높이 정렬(start)' + '카드 높이 제어' 버전 적용됨
 
     // 2-3. 강사 코멘트
     // (page-break-inside: avoid 제거)

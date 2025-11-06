@@ -160,7 +160,7 @@ function addFeaturesSection(pdf, data, yPos) {
     const boxWidth = 58;
     const boxMargin = 7.5;
     const startX = 15;
-    let boxHeight = 25; 
+    let boxHeight = 25; // ⭐️ [수정] 최소 높이값으로 사용됨 (minBoxHeight)
 
     const errorText = highErrorRateQuestions.length > 0 
         ? highErrorRateQuestions.map(q => `${q.qNum}번 (${q.rate}%)`).join(', ') 
@@ -169,7 +169,11 @@ function addFeaturesSection(pdf, data, yPos) {
     pdf.setFont('NotoSansKR', 'normal'); // ⭐️ splitTextToSize 전에 폰트 설정
     const errorTextLines = pdf.splitTextToSize(errorText, boxWidth - 10);
     const errorTextHeight = (errorTextLines.length * 9 * 0.352778 * 1.6) + 18;
-    boxHeight = Math.max(boxHeight, errorTextHeight); 
+    
+    // --- ⭐️ [수정] 박스 높이 계산 로직 (Clamping) ---
+    // 최소 25mm, 최대 40mm로 높이를 제한하여 과도한 여백 방지
+    boxHeight = Math.max(25, Math.min(errorTextHeight, 50)); 
+    // --- [수정] 완료 ---
 
     pdf.setLineWidth(0.5);
 
@@ -473,7 +477,7 @@ export const useChartAndPDF = () => {
                 // ⭐️ 페이지 1: 종합 분석 + 강사 코멘트
                 addPdfTitle(pdf, `${selectedDate} Weekly Test`, `${selectedClass} / ${student.name}`);
                 yPos = addPdfSectionTitle(pdf, '반 전체 주요 특징', 40);
-                yPos = addFeaturesSection(pdf, data, yPos);
+                yPos = addFeaturesSection(pdf, data, yPos); // ⭐️ [수정] 높이 제어(clamping) 로직이 적용된 함수
 
                 const commentText = document.getElementById('instructorComment')?.value ?? '';
                 yPos = addPdfSectionTitle(pdf, '👨‍🏫 담당 강사 코멘트', yPos + 5);
@@ -611,7 +615,7 @@ export const useChartAndPDF = () => {
                 // (반 전체 리포트 로직)
                 addPdfTitle(pdf, `${selectedClass} ${selectedDate} 주간테스트 리포트 (반 전체)`);
                 yPos = addPdfSectionTitle(pdf, '💡 반 전체 주요 특징', 40);
-                yPos = addFeaturesSection(pdf, data, yPos);
+                yPos = addFeaturesSection(pdf, data, yPos); // ⭐️ [수정] 높이 제어(clamping) 로직이 적용된 함수
                 yPos = addPdfSectionTitle(pdf, '🤖 반 전체 AI 종합 분석', yPos + 5);
 
                 if (chartImgData) {
