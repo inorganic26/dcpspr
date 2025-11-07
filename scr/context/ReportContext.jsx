@@ -7,8 +7,15 @@ const ReportContext = createContext();
 export const useReportContext = () => useContext(ReportContext);
 
 export const ReportProvider = ({ children }) => {
-    const [testData, setTestData] = useState({});
-    const [currentPage, setCurrentPage] = useState('page1'); // page1 (upload), page2 (class), page3 (date), page4 (report), page5 (display)
+    // ⭐️ [수정] 'testData'를 'currentReportData'로 변경 (현재 선택된 리포트 상세)
+    const [currentReportData, setCurrentReportData] = useState(null); 
+    // ⭐️ [신규] 'reportSummaries' 추가 (모든 리포트의 요약 목록)
+    const [reportSummaries, setReportSummaries] = useState([]);
+    
+    const [currentPage, setCurrentPage] = useState('page1'); // page1, page2, page3, page4, page5
+    
+    // ⭐️ [수정] 'selectedReportId' 추가 (DB의 문서 ID)
+    const [selectedReportId, setSelectedReportId] = useState(null);
     const [selectedClass, setSelectedClass] = useState(null);
     const [selectedDate, setSelectedDate] = useState(null);
     const [selectedStudent, setSelectedStudent] = useState(null); // null for overall, name for individual
@@ -16,8 +23,6 @@ export const ReportProvider = ({ children }) => {
     // --- Global Loading States ---
     const [initialLoading, setInitialLoading] = useState(true); // App.jsx에서 로그인 후 최초 데이터 로드
     const [processing, setProcessing] = useState(false); // useFileProcessor (파일 처리 중)
-    
-    // ⭐️ [수정] 개별 분석 로딩(isIndividualLoading)과 차트 로딩(aiLoading)을 'aiLoading'으로 통일
     const [aiLoading, setAiLoading] = useState(false); 
 
     // --- Report Display States ---
@@ -32,8 +37,6 @@ export const ReportProvider = ({ children }) => {
 
     // --- Other ---
     const [uploadDate, setUploadDate] = useState('');
-
-    // ⭐️ [추가] useChartAndPDF.js가 Context에서 사용하길 기대하는 차트 상태
     const [activeChart, setActiveChart] = useState(null);
 
 
@@ -41,18 +44,36 @@ export const ReportProvider = ({ children }) => {
         setErrorMessage(''); // 페이지 이동 시 항상 에러 메시지 초기화
         setCurrentPage(pageName);
     };
+    
+    // ⭐️ [신규] 홈으로 갈 때 모든 선택 초기화
+    const resetSelections = () => {
+        setSelectedReportId(null);
+        setSelectedClass(null);
+        setSelectedDate(null);
+        setSelectedStudent(null);
+        setCurrentReportData(null);
+        setReportHTML('');
+    };
 
     const value = {
-        testData, setTestData,
-        currentPage, setCurrentPage, showPage,
+        // ⭐️ [수정] 데이터 상태 변경
+        reportSummaries, setReportSummaries,
+        currentReportData, setCurrentReportData,
+        
+        // ⭐️ [수정] testData, setTestData 제거
+        // testData: currentReportData, // (하위 호환성을 위해 임시 제공)
+        // setTestData: setCurrentReportData,
+        
+        currentPage, setCurrentPage, showPage, resetSelections,
+        
+        // ⭐️ [수정] 선택 상태 변경
+        selectedReportId, setSelectedReportId,
         selectedClass, setSelectedClass,
         selectedDate, setSelectedDate,
         selectedStudent, setSelectedStudent,
         
         initialLoading, setInitialLoading,
         processing, setProcessing,
-        
-        // ⭐️ [수정] isIndividualLoading -> aiLoading 으로 통일하여 제공
         aiLoading, setAiLoading,
 
         reportHTML, setReportHTML,
@@ -62,7 +83,6 @@ export const ReportProvider = ({ children }) => {
         currentTeacher, setCurrentTeacher,
         uploadDate, setUploadDate,
         
-        // ⭐️ [추가] Context에 activeChart 상태 제공
         activeChart, setActiveChart
     };
 

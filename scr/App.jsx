@@ -1,8 +1,13 @@
 // scr/App.jsx
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useReportContext } from './context/ReportContext';
-import { loginTeacher, registerTeacher, loadDataFromFirestore, saveDataToFirestore } from './hooks/useFirebase';
+// ⭐️ [수정] 'loadDataFromFirestore', 'saveDataToFirestore' 대신 신규 함수들 임포트
+import { 
+    loginTeacher, registerTeacher, 
+    loadReportSummaries, loadReportDetails, 
+    deleteReport, deleteStudentFromReport 
+} from './hooks/useFirebase';
 import { useFileProcessor } from './hooks/useFileProcessor';
 import { useReportGenerator } from './hooks/useReportGenerator';
 import { useChartAndPDF } from './hooks/useChartAndPDF';
@@ -14,12 +19,12 @@ import { auth } from './lib/firebaseConfig';
 
 import { Home, ArrowLeft, UploadCloud, FileText, Loader, TriangleAlert, Save, PlusCircle, CalendarDays, LogOut, User, Trash2 } from 'lucide-react';
 
-// ... (Page1_Upload, Page2_ClassSelect, Page3_DateSelect 컴포넌트는 기존과 동일) ...
+// ... (Page1_Upload 컴포넌트는 기존과 동일) ...
 const Page1_Upload = ({ handleFileChange, handleFileProcess, fileInputRef, selectedFiles, handleFileDrop }) => { 
-    // ... (이 컴포넌트의 코드는 이전과 동일) ...
     const { 
         processing, errorMessage, uploadDate, setUploadDate, showPage, 
-        testData, setSelectedDate, setErrorMessage 
+        // ⭐️ [수정] 'testData' 대신 'reportSummaries'
+        reportSummaries, setSelectedDate, setErrorMessage 
     } = useReportContext();
     const [isDragging, setIsDragging] = useState(false); 
     const handleDragOver = (e) => { e.preventDefault(); e.stopPropagation(); if (!isDragging) setIsDragging(true); };
@@ -46,16 +51,22 @@ const Page1_Upload = ({ handleFileChange, handleFileProcess, fileInputRef, selec
         if (!uploadDate) { const todayISO = getTodayISO(); setIsoDate(todayISO); setUploadDate(formatISOToMMDD(todayISO)); }
     }, [uploadDate, setUploadDate]);
     const handleDateChange = (e) => { const newIsoDate = e.target.value; setIsoDate(newIsoDate); setUploadDate(formatISOToMMDD(newIsoDate)); };
+    
     const handleViewExistingByDate = () => {
         if (!uploadDate) { setErrorMessage('먼저 조회할 날짜를 선택해주세요.'); return; }
-        const allDates = new Set();
-        if (testData && typeof testData === 'object') {
-            Object.values(testData).forEach(classData => {
-                if (classData && typeof classData === 'object') { Object.keys(classData).forEach(date => { allDates.add(date); }); }
-            });
+        
+        // ⭐️ [수정] 'reportSummaries'에서 날짜 검색
+        const allDates = new Set(reportSummaries.map(r => r.date));
+        
+        if (allDates.has(uploadDate)) { 
+            setErrorMessage(''); 
+            setSelectedDate(uploadDate); 
+            showPage('page2'); // 반 선택 페이지로 이동
+        } else { 
+            setErrorMessage(`'${uploadDate}'에 해당하는 분석된 리포트가 없습니다. \n다른 날짜를 선택하거나 '모든 날짜 보기'를 클릭하세요.`); 
         }
-        if (allDates.has(uploadDate)) { setErrorMessage(''); setSelectedDate(uploadDate); showPage('page2'); } else { setErrorMessage(`'${uploadDate}'에 해당하는 분석된 리포트가 없습니다. \n다른 날짜를 선택하거나 '모든 날짜 보기'를 클릭하세요.`); }
     };
+    
     return (
         <div id="fileUploadCard" className="card">
             <h2 className="text-2xl font-bold text-center mb-6 text-gray-700">AI 성적 리포트 분석기</h2>
@@ -92,19 +103,38 @@ const Page1_Upload = ({ handleFileChange, handleFileProcess, fileInputRef, selec
         </div>
     );
 };
-const Page2_ClassSelect = ({ handleDeleteClass, selectedDate }) => { 
-    const { testData, setSelectedClass, showPage } = useReportContext();
-    const classesForDate = Object.keys(testData).filter(className => testData[className] && testData[className][selectedDate]);
+
+// ... (Page2_ClassSelect 컴포넌트 수정) ...
+const Page2_ClassSelect = ({ handleDeleteClass, selectedDate, handleSelectReport }) => { 
+    // ⭐️ [수정] 'testData' 대신 'reportSummaries'
+    const { reportSummaries, setSelectedClass, showPage, setSelectedReportId } = useReportContext();
+    
+    // ⭐️ [수정] 선택된 날짜에 해당하는 '반 이름' 목록을 'reportSummaries'에서 찾기
+    const classesForDate = reportSummaries
+        .filter(r => r.date === selectedDate)
+        .map(r => r.className);
+    
+    const uniqueClasses = [...new Set(classesForDate)]; // 중복 제거
+
     return (
         <div className="card">
             <h2 className="text-2xl font-bold text-center mb-6">{selectedDate} - 반 선택</h2>
             <div id="classButtons" className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {classesForDate.length > 0 ? (
-                    classesForDate.map(className => (
+                {uniqueClasses.length > 0 ? (
+                    uniqueClasses.map(className => (
                         <div key={className} className="relative flex w-full">
                             <button 
                                 className="btn btn-secondary w-full text-left pr-12" 
-                                onClick={() => { setSelectedClass(className); showPage('page4'); }}
+                                // ⭐️ [수정] 클릭 시 'reportId'를 찾아 App.jsx의 핸들러 호출
+                                onClick={() => {
+                                    const report = reportSummaries.find(r => r.date === selectedDate && r.className === className);
+                                    if (report) {
+                                        setSelectedReportId(report.id);
+                                        setSelectedClass(className);
+                                        // App.jsx의 loadAndShowReport 함수가 호출됨
+                                        handleSelectReport(report.id, 'page4'); 
+                                    }
+                                }}
                             >
                                 {className}
                             </button>
@@ -112,7 +142,11 @@ const Page2_ClassSelect = ({ handleDeleteClass, selectedDate }) => {
                                 className="absolute right-1 top-1 bottom-1 btn btn-secondary h-auto px-2 text-red-500 hover:bg-red-100 hover:border-red-300" 
                                 onClick={(e) => {
                                     e.stopPropagation();
-                                    handleDeleteClass(className, selectedDate); 
+                                    // ⭐️ [수정] 삭제 핸들러가 reportId를 찾도록 전달
+                                    const report = reportSummaries.find(r => r.date === selectedDate && r.className === className);
+                                    if(report) {
+                                        handleDeleteClass(report.id, className, selectedDate); 
+                                    }
                                 }}
                                 title={`${className} 데이터 삭제`}
                             >
@@ -125,14 +159,14 @@ const Page2_ClassSelect = ({ handleDeleteClass, selectedDate }) => {
         </div>
     );
 };
+
+// ... (Page3_DateSelect 컴포넌트 수정) ...
 const Page3_DateSelect = ({ handleDeleteDate }) => { 
-    const { testData, setSelectedDate, showPage } = useReportContext();
-    const allDates = new Set();
-    Object.values(testData).forEach(classData => { 
-        if (classData) { 
-            Object.keys(classData).forEach(date => { allDates.add(date); }); 
-        }
-    });
+    // ⭐️ [수정] 'testData' 대신 'reportSummaries'
+    const { reportSummaries, setSelectedDate, showPage } = useReportContext();
+    
+    // ⭐️ [수정] 'reportSummaries'에서 모든 날짜 추출
+    const allDates = new Set(reportSummaries.map(r => r.date));
     const uniqueDates = Array.from(allDates);
 
     return (
@@ -144,7 +178,10 @@ const Page3_DateSelect = ({ handleDeleteDate }) => {
                         <div key={date} className="relative flex w-full">
                             <button 
                                 className="btn btn-secondary w-full text-left pr-12" 
-                                onClick={() => { setSelectedDate(date); showPage('page2'); }}
+                                onClick={() => { 
+                                    setSelectedDate(date); 
+                                    showPage('page2'); // 반 선택 페이지로 이동
+                                }}
                             >
                                 {date}
                             </button>
@@ -152,7 +189,7 @@ const Page3_DateSelect = ({ handleDeleteDate }) => {
                                 className="absolute right-1 top-1 bottom-1 btn btn-secondary h-auto px-2 text-red-500 hover:bg-red-100 hover:border-red-300" 
                                 onClick={(e) => {
                                     e.stopPropagation(); 
-                                    handleDeleteDate(date);
+                                    handleDeleteDate(date); // App.jsx의 삭제 핸들러
                                 }}
                                 title={`${date} 데이터 삭제`}
                             >
@@ -169,33 +206,40 @@ const Page3_DateSelect = ({ handleDeleteDate }) => {
 };
 
 
-// ⭐️ [수정] Page4_ReportSelect (레이아웃 변경)
-const Page4_ReportSelect = ({ handleDeleteStudent, selectedClass, selectedDate }) => { 
-    const { testData, selectedStudent, setSelectedStudent, showPage } = useReportContext();
-    const students = testData[selectedClass]?.[selectedDate]?.studentData?.students || [];
+// ... (Page4_ReportSelect 컴포넌트 수정) ...
+const Page4_ReportSelect = ({ handleDeleteStudent, selectedClass, selectedDate, handleSelectReport }) => { 
+    // ⭐️ [수정] 'testData' 대신 'currentReportData'
+    const { currentReportData, selectedStudent, setSelectedStudent, showPage, selectedReportId } = useReportContext();
+    
+    // ⭐️ [수정] 데이터 참조 변경 (currentReportData.students)
+    const students = currentReportData?.students || [];
     
     return (
         <div className="card">
             <h2 className="text-2xl font-bold text-center mb-6">리포트 선택</h2>
             
-            {/* ⭐️ [수정] flex flex-wrap -> grid ... gap-3 로 변경 */}
             <div id="reportSelectionButtons" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 
-                {/* 반 전체 버튼 (삭제 없음) */}
                 <button 
-                    className={`btn btn-secondary w-full ${selectedStudent === null ? 'btn-nav-active' : ''}`} // ⭐️ w-full 추가
-                    onClick={() => { setSelectedStudent(null); showPage('page5'); }}
+                    className={`btn btn-secondary w-full ${selectedStudent === null ? 'btn-nav-active' : ''}`}
+                    onClick={() => { 
+                        setSelectedStudent(null); 
+                        // ⭐️ [수정] App.jsx의 핸들러 호출
+                        handleSelectReport(selectedReportId, 'page5'); 
+                    }}
                 >
                     반 전체
                 </button>
                 
                 {students.map(student => (
-                    // ⭐️ [수정] 이 div는 이제 grid 아이템이 됨 (relative flex w-full)
                     <div key={student.name} className="relative flex"> 
                         <button 
-                            // ⭐️ [수정] w-full, text-left 추가
                             className={`btn btn-secondary w-full text-left pr-10 ${selectedStudent === student.name ? 'btn-nav-active' : ''}`} 
-                            onClick={() => { setSelectedStudent(student.name); showPage('page5'); }}
+                            onClick={() => { 
+                                setSelectedStudent(student.name); 
+                                // ⭐️ [수정] App.jsx의 핸들러 호출
+                                handleSelectReport(selectedReportId, 'page5'); 
+                            }}
                         >
                             {student.name}
                         </button>
@@ -203,6 +247,7 @@ const Page4_ReportSelect = ({ handleDeleteStudent, selectedClass, selectedDate }
                             className="absolute right-1 top-1 bottom-1 btn btn-secondary h-auto px-2 text-red-500 hover:bg-red-100 hover:border-red-300"
                             onClick={(e) => {
                                 e.stopPropagation();
+                                // ⭐️ [수정] 삭제 핸들러 호출
                                 handleDeleteStudent(student.name, selectedClass, selectedDate); 
                             }}
                             title={`${student.name} 학생 데이터 삭제`}
@@ -217,9 +262,8 @@ const Page4_ReportSelect = ({ handleDeleteStudent, selectedClass, selectedDate }
 };
 
 
-// ... (Page5_ReportDisplay, LoginPage, App 컴포넌트 등 나머지는 모두 동일) ...
+// ... (Page5_ReportDisplay, LoginPage 컴포넌트는 기존과 동일) ...
 const Page5_ReportDisplay = () => { 
-    // ... (이 컴포넌트의 코드는 이전과 동일) ...
     const { reportHTML } = useReportContext();
     const reportContentRef = usePagination(); 
     return (
@@ -234,7 +278,6 @@ const Page5_ReportDisplay = () => {
     );
 };
 const LoginPage = ({ onLogin, onRegister, loginError, isLoggingIn, setLoginError }) => {
-    // ... (이 컴포넌트의 코드는 이전과 동일) ...
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
     const [isRegisterMode, setIsRegisterMode] = useState(false);
@@ -292,18 +335,27 @@ const App = () => {
         initialLoading, setInitialLoading,
         errorMessage, setErrorMessage,
         currentTeacher, setCurrentTeacher,
-        testData, 
-        setTestData, showPage
+        
+        // ⭐️ [수정] 'testData' 대신 신규 상태 사용
+        reportSummaries, setReportSummaries,
+        setCurrentReportData,
+        selectedReportId, setSelectedReportId,
+        
+        showPage, resetSelections
     } = useReportContext();
     
     const [isAuthenticating, setIsAuthenticating] = useState(true); 
     const [isLoggingIn, setIsLoggingIn] = useState(false);
     const [loginError, setLoginError] = useState('');
 
-    const { fileInputRef, selectedFiles, handleFileChange, handleFileProcess, handleFileDrop } = useFileProcessor({ saveDataToFirestore });
+    // ⭐️ [수정] 'saveDataToFirestore' prop 제거
+    const { fileInputRef, selectedFiles, handleFileChange, handleFileProcess, handleFileDrop } = useFileProcessor({
+        /* saveDataToFirestore: ... 제거 */
+    });
     const { goBack, goHome } = useReportNavigation();
     
-    useReportGenerator({ saveDataToFirestore, setTestData }); 
+    // ⭐️ [수정] 'useReportGenerator'는 더 이상 props가 필요 없음
+    useReportGenerator(); 
     
     const { handlePdfSave } = useChartAndPDF(); 
     
@@ -363,19 +415,20 @@ const App = () => {
         }
     };
     
-    // (performSuccessfulLogin 핸들러는 변경 없음)
+    // ⭐️ [수정] 'performSuccessfulLogin' (요약 정보 로드)
     const performSuccessfulLogin = async (teacher) => {
         setCurrentTeacher(teacher); 
         setInitialLoading(true); 
         
         try {
-            const loadedData = await loadDataFromFirestore(); 
-            setTestData(loadedData || {}); 
+            // ⭐️ [수정] 'loadDataFromFirestore' -> 'loadReportSummaries'
+            const loadedSummaries = await loadReportSummaries(); 
+            setReportSummaries(loadedSummaries || []); 
 
         } catch (error) {
-            console.error("데이터 로드 실패:", error);
-            setLoginError("로그인은 성공했으나 데이터 로드에 실패했습니다: " + error.message);
-            setTestData({}); 
+            console.error("데이터 요약 로드 실패:", error);
+            setLoginError("로그인은 성공했으나 요약 로드에 실패했습니다: " + error.message);
+            setReportSummaries([]); 
 
         } finally {
             setInitialLoading(false); 
@@ -385,12 +438,30 @@ const App = () => {
 
     const handleLogout = () => {
         setCurrentTeacher(null);
-        setTestData({});
+        setReportSummaries([]); // ⭐️ [수정]
+        resetSelections(); // ⭐️ [수정]
         showPage('page1');
         setErrorMessage('');
     };
     
-    // (handleDeleteDate 핸들러는 변경 없음 - 날짜별 삭제)
+    // ⭐️ [신규] 리포트 상세 데이터 로드 함수
+    const loadAndShowReport = useCallback(async (reportId, pageToShow) => {
+        if (!reportId) return;
+        setInitialLoading(true);
+        try {
+            const details = await loadReportDetails(reportId);
+            setCurrentReportData(details);
+            showPage(pageToShow);
+        } catch (error) {
+            setErrorMessage("리포트 상세 내역 로드 실패: " + error.message);
+            showPage('page3'); // 오류 시 날짜 선택으로
+        } finally {
+            setInitialLoading(false);
+        }
+    }, [setCurrentReportData, setInitialLoading, setErrorMessage, showPage]);
+
+    
+    // ⭐️ [수정] 'handleDeleteDate' (날짜별 삭제)
     const handleDeleteDate = async (dateToDelete) => {
         if (!window.confirm(`'${dateToDelete}'의 모든 분석 데이터를 정말 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`)) {
             return;
@@ -399,21 +470,16 @@ const App = () => {
         setErrorMessage('삭제 중...'); 
         setInitialLoading(true); 
 
+        // ⭐️ [수정] 삭제할 리포트 ID 목록 찾기
+        const reportsToDelete = reportSummaries.filter(r => r.date === dateToDelete);
+        
         try {
-            const newTestData = JSON.parse(JSON.stringify(testData));
+            // ⭐️ [수정] 'deleteReport' 함수 병렬 호출
+            await Promise.all(reportsToDelete.map(report => deleteReport(report.id)));
             
-            Object.keys(newTestData).forEach(className => {
-                if (newTestData[className] && newTestData[className][dateToDelete]) {
-                    delete newTestData[className][dateToDelete];
-                    
-                    if (Object.keys(newTestData[className]).length === 0) {
-                        delete newTestData[className];
-                    }
-                }
-            });
-
-            await saveDataToFirestore(newTestData);
-            setTestData(newTestData);
+            // ⭐️ [수정] 로컬 'reportSummaries' 상태 업데이트
+            setReportSummaries(prev => prev.filter(r => r.date !== dateToDelete));
+            
             setErrorMessage(''); 
             
         } catch (error) {
@@ -424,50 +490,48 @@ const App = () => {
         }
     };
     
-    // (handleDeleteClass 핸들러는 변경 없음 - 반별 삭제)
-    const handleDeleteClass = async (className, date) => {
+    // ⭐️ [수정] 'handleDeleteClass' (반별 삭제)
+    const handleDeleteClass = async (reportId, className, date) => {
         if (!window.confirm(`'${date}'의 '${className}'반 데이터를 정말 삭제하시겠습니까?`)) {
             return;
         }
         setInitialLoading(true); 
         try {
-            const newTestData = JSON.parse(JSON.stringify(testData));
-            if (newTestData[className] && newTestData[className][date]) {
-                delete newTestData[className][date]; 
-                
-                if (Object.keys(newTestData[className]).length === 0) {
-                    delete newTestData[className];
-                }
-                
-                await saveDataToFirestore(newTestData);
-                setTestData(newTestData);
-            }
+            // ⭐️ [수정] 'deleteReport' 함수 호출
+            await deleteReport(reportId);
+            
+            // ⭐️ [수정] 로컬 'reportSummaries' 상태 업데이트
+            setReportSummaries(prev => prev.filter(r => r.id !== reportId));
+
         } catch (error) {
             setErrorMessage("반 데이터 삭제 중 오류: " + error.message);
         } finally {
             setInitialLoading(false);
+            // ⭐️ [수정] 현재 페이지에 머무름 (Page2_ClassSelect)
         }
     };
 
-    // (handleDeleteStudent 핸들러는 변경 없음 - 학생별 삭제)
+    // ⭐️ [수정] 'handleDeleteStudent' (학생별 삭제)
     const handleDeleteStudent = async (studentName, className, date) => {
         if (!window.confirm(`'${date}' - '${className}'반의 '${studentName}' 학생 데이터를 정말 삭제하시겠습니까?\n\n(참고: 학생 삭제 시 반 전체 평균이 자동으로 재계산되지는 않습니다.)`)) {
             return;
         }
+        if (!selectedReportId) {
+            setErrorMessage("오류: 리포트 ID가 선택되지 않았습니다.");
+            return;
+        }
+        
         setInitialLoading(true); 
         try {
-            const newTestData = JSON.parse(JSON.stringify(testData));
-            const students = newTestData[className]?.[date]?.studentData?.students;
+            // ⭐️ [수정] 'deleteStudentFromReport' 함수 호출
+            await deleteStudentFromReport(selectedReportId, studentName);
             
-            if (students) {
-                const studentIndex = students.findIndex(s => s.name === studentName);
-                if (studentIndex > -1) {
-                    students.splice(studentIndex, 1); 
-                    
-                    await saveDataToFirestore(newTestData);
-                    setTestData(newTestData);
-                }
-            }
+            // ⭐️ [수정] 로컬 'currentReportData' 상태 업데이트
+            setCurrentReportData(prev => ({
+                ...prev,
+                students: prev.students.filter(s => s.name !== studentName)
+            }));
+            
         } catch (error) {
             setErrorMessage("학생 데이터 삭제 중 오류: " + error.message);
         } finally {
@@ -509,7 +573,6 @@ const App = () => {
     };
 
     const renderPage = () => {
-        // (익명 인증 로딩 확인)
         if (isAuthenticating) {
             return (
                 <div id="initialLoader" className="card p-8 text-center mt-20">
@@ -519,7 +582,6 @@ const App = () => {
             );
         }
 
-        // (선생님 로그인 확인)
         if (!currentTeacher) {
             return <LoginPage 
                         onLogin={handleLogin}
@@ -530,7 +592,6 @@ const App = () => {
                     />;
         }
 
-        // (최초 데이터 로딩 확인)
         if (initialLoading) {
             return (
                 <div id="initialLoader" className="card p-8 text-center mt-20">
@@ -540,7 +601,7 @@ const App = () => {
             );
         }
         
-        // (renderPage 스위치 문은 변경 없음)
+        // ⭐️ [수정] 'renderPage' 스위치 (prop 전달 변경)
         switch (currentPage) {
             case 'page1': 
                 return <Page1_Upload 
@@ -553,7 +614,9 @@ const App = () => {
             case 'page2': 
                 return <Page2_ClassSelect 
                             handleDeleteClass={handleDeleteClass} 
-                            selectedDate={selectedDate}         
+                            selectedDate={selectedDate}
+                            // ⭐️ [신규] 리포트 로딩 함수 전달
+                            handleSelectReport={loadAndShowReport}
                         />;
             case 'page3': 
                 return <Page3_DateSelect 
@@ -563,7 +626,9 @@ const App = () => {
                 return <Page4_ReportSelect 
                             handleDeleteStudent={handleDeleteStudent} 
                             selectedClass={selectedClass}         
-                            selectedDate={selectedDate}           
+                            selectedDate={selectedDate}
+                            // ⭐️ [신규] 리포트 로딩 함수 전달
+                            handleSelectReport={loadAndShowReport}
                         />;
             case 'page5': return <Page5_ReportDisplay />;
             default:
@@ -578,7 +643,6 @@ const App = () => {
     };
 
     const renderGlobalError = () => {
-        // ... (내용 동일) ...
         if (!errorMessage || currentPage === 'page1') return null; 
         return ( <div id="global-error-message" /* ... (내용 동일) ... */ > </div> );
     };

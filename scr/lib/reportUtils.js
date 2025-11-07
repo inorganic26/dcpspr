@@ -9,7 +9,6 @@ function replaceAISpinner(html, aiContent) {
     if (typeof aiContent !== 'string' || aiContent.trim() === '') {
         return html.replace(/<div class="ai-spinner"><\/div>/g, '<p class="text-gray-500">(AI 분석 내용을 생성하지 못했습니다.)</p>');
     }
-    // [수정] AI가 생성한 줄바꿈(\n)을 공백(' ')으로 변경하여 한 줄로 잇습니다.
     const formattedContent = aiContent.replace(/\n/g, ' ');
     return html.replace(/<div class="ai-spinner"><\/div>/g, formattedContent);
 }
@@ -32,14 +31,14 @@ function getDifficulty(qNum, selectedClass) {
 }
 
 /**
- * ⭐️ [수정] '여백 최소화' + '높이 정렬(start)' 버전으로 함수 교체
+ * ⭐️ [수정] '여백 최소화' + '높이 정렬(start)' + '데이터 구조 변경' 버전
  */
 function generateOverallFeaturesHTML(data, aiOverallAnalysis) {
-    const submittedStudents = data.studentData.students.filter(s => s.submitted);
+    // ⭐️ [수정] 'data.studentData.students' -> 'data.students'
+    const submittedStudents = data.students.filter(s => s.submitted);
     let featuresHtml = '';
 
     if (submittedStudents.length === 0) {
-        // 🔧 여백 최소화 버전 (p-3, mb-2, text-sm)
         featuresHtml = `
             <div class="card p-3 printable-section mb-2">
                 <h3 class="text-xl font-bold text-gray-800 mb-2">💡 반 전체 주요 특징</h3>
@@ -51,17 +50,17 @@ function generateOverallFeaturesHTML(data, aiOverallAnalysis) {
         const minScore = Math.min(...scores);
 
         const allCorrectQuestions = [];
-        data.studentData.answerRates.forEach((rate, i) => {
+        // ⭐️ [수정] 'data.studentData.answerRates' -> 'data.answerRates'
+        data.answerRates.forEach((rate, i) => {
             if (rate === 100) allCorrectQuestions.push(i + 1);
         });
 
         const highErrorRateQuestions = [];
-        data.studentData.answerRates.forEach((rate, i) => {
+        // ⭐️ [수정] 'data.studentData.answerRates' -> 'data.answerRates'
+        data.answerRates.forEach((rate, i) => {
             if (rate <= 40) highErrorRateQuestions.push({ qNum: i + 1, rate: rate });
         });
 
-        // 🔧 여백 최소화 버전 (p-3, mb-2, gap-2, p-1, text-sm)
-        // ⭐️ [수정] style="align-items: start;" 를 다시 추가하여 박스 높이가 강제로 늘어나는 것을 방지합니다.
         featuresHtml = `
             <div id="pdf-section-features" class="card p-3 printable-section mb-2">
                 <h3 class="text-xl font-bold text-gray-800 mb-2">💡 반 전체 주요 특징</h3>
@@ -69,7 +68,8 @@ function generateOverallFeaturesHTML(data, aiOverallAnalysis) {
                     <div class="bg-indigo-50 rounded border border-indigo-200 p-1">
                         <h4 class="font-semibold text-indigo-800 text-sm mb-0.5">📈 점수 분포</h4>
                         <p class="text-indigo-700 text-sm leading-tight">
-                            최고 ${maxScore}점, 최저 ${minScore}점, 평균 ${data.studentData.classAverage}점
+                            {/* ⭐️ [수정] 'data.studentData.classAverage' -> 'data.classAverage' */}
+                            최고 ${maxScore}점, 최저 ${minScore}점, 평균 ${data.classAverage}점
                         </p>
                     </div>
                     <div class="bg-green-50 rounded border border-green-200 p-1">
@@ -78,7 +78,6 @@ function generateOverallFeaturesHTML(data, aiOverallAnalysis) {
                             ${allCorrectQuestions.length > 0 ? allCorrectQuestions.map(q => `${q}번`).join(', ') : '없음'}
                         </p>
                     </div>
-                    {/* --- ⭐️ [수정] 붉은색 카드 높이 제어 (flex-col, max-h) --- */}
                     <div class="bg-red-50 rounded border border-red-200 p-1 flex flex-col justify-between">
                         <h4 class="font-semibold text-red-800 text-sm mb-0.5">❌ 오답률 높은 문항 (40% 이하)</h4>
                         <div class="flex-1 overflow-y-auto text-red-700 text-sm leading-tight break-words max-h-[4rem]">
@@ -87,7 +86,6 @@ function generateOverallFeaturesHTML(data, aiOverallAnalysis) {
                                 : '없음'}
                         </div>
                     </div>
-                    {/* --- [수정] 완료 --- */}
                 </div>
             </div>
         `;
@@ -98,20 +96,20 @@ function generateOverallFeaturesHTML(data, aiOverallAnalysis) {
 
 /**
  * ----------------------------------------------------------------
- * 1. 반 전체 리포트 HTML 생성
+ * 1. 반 전체 리포트 HTML 생성 (수정됨)
  * ----------------------------------------------------------------
  */
 export function generateOverallReportHTML(data, aiOverallAnalysis, selectedClass, selectedDate) {
     
+    // (data 객체는 이제 studentData를 포함하지 않고, classAverage 등을 직접 가짐)
+    
     // 1-1. 반 전체 주요 특징 (상단 3개 박스)
-    const featuresHtml = generateOverallFeaturesHTML(data, aiOverallAnalysis); // ⭐️ '여백 최소화' + '높이 정렬(start)' + '카드 높이 제어' 버전 적용됨
+    const featuresHtml = generateOverallFeaturesHTML(data, aiOverallAnalysis); // ⭐️ 수정된 함수 호출
 
     // 1-2. AI 종합 분석 (차트 + 3개 분석)
     const summaryContent = aiOverallAnalysis ? aiOverallAnalysis.summary.replace(/\n/g, ' ') : '<div class="ai-spinner"></div>';
     const weaknessesContent = aiOverallAnalysis ? aiOverallAnalysis.common_weaknesses.replace(/\n/g, ' ') : '<div class="ai-spinner"></div>';
     const recommendationsContent = aiOverallAnalysis ? aiOverallAnalysis.recommendations.replace(/\n/g, ' ') : '<div class="ai-spinner"></div>';
-
-    // ⭐️ [수정] 'aiAnalysisHtml'을 'scoreChartHtml'과 'aiBoxesHtml'로 분리합니다.
 
     // 1-2a. 점수 차트 (1페이지용)
     const scoreChartHtml = `
@@ -159,7 +157,6 @@ export function generateOverallReportHTML(data, aiOverallAnalysis, selectedClass
         }
     }
 
-    // (page-break-inside: avoid 제거 - 테이블은 잘려도 됨)
     const solutionsHtml = `
         <div id="pdf-section-solutions-overall" class="card p-6 printable-section">
             <h3 class="text-2xl font-bold text-gray-800 mb-4">🔍 주요 오답 문항 분석 (AI 기반)</h3>
@@ -182,7 +179,6 @@ export function generateOverallReportHTML(data, aiOverallAnalysis, selectedClass
     `;
 
     // 1-4. HTML 조합
-    // ⭐️ [수정] '종합 분석' 페이지를 '특징+차트' / 'AI분석' 2페이지로 분리
     return `
         <div class="text-center my-4 print:hidden">
             <h2 class="text-3xl font-bold text-gray-800">${selectedClass} ${selectedDate}</h2>
@@ -207,17 +203,19 @@ export function generateOverallReportHTML(data, aiOverallAnalysis, selectedClass
 
 /**
  * ----------------------------------------------------------------
- * 2. 학생 개별 리포트 HTML 생성
+ * 2. 학생 개별 리포트 HTML 생성 (수정됨)
  * ----------------------------------------------------------------
  */
 export function generateIndividualReportHTML(student, data, aiAnalysis, aiOverallAnalysis, selectedClass, selectedDate) {
     
+    // (data 객체는 이제 studentData를 포함하지 않고, classAverage 등을 직접 가짐)
+
     // 2-1. 미응시 학생 처리
-    if (!student.submitted) {
+    if (!student || !student.submitted) { // ⭐️ 'student' 객체 자체도 null일 수 있음
         return `
             <div class="text-center my-4 print:hidden">
                 <h2 class="text-3xl font-bold text-gray-800">${selectedClass} ${selectedDate}</h2>
-                <p class="text-xl text-gray-600">${student.name} 학생 리포트</p>
+                <p class="text-xl text-gray-600">${student ? student.name : '알 수 없음'} 학생 리포트</p>
             </div>
             <div class="card p-8 text-center">
                 <p class="text-xl text-gray-600 p-8">해당 시험에 응시하지 않아 리포트를 생성할 수 없습니다.</p>
@@ -226,10 +224,9 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
     }
 
     // 2-2. 반 전체 주요 특징 (상단 3개 박스) - 재사용
-    const featuresHtml = generateOverallFeaturesHTML(data, aiOverallAnalysis); // ⭐️ '여백 최소화' + '높이 정렬(start)' + '카드 높이 제어' 버전 적용됨
+    const featuresHtml = generateOverallFeaturesHTML(data, aiOverallAnalysis); // ⭐️ 수정된 함수 호출
 
     // 2-3. 강사 코멘트
-    // (page-break-inside: avoid 제거)
     const commentHtml = `
         <div id="pdf-section-comment" class="card p-6 printable-section">
             <h3 class="text-2xl font-bold text-gray-800 mb-4">👨‍🏫 담당 강사 코멘트</h3>
@@ -247,7 +244,6 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
     const recommendationsContent = aiAnalysis ? aiAnalysis.recommendations.replace(/\n/g, ' ') : '<div class="ai-spinner"></div>';
     
     // 2-4a. 점수 차트 (1페이지용)
-    // (page-break-inside: avoid; 유지 - 차트는 통째로)
     const scoreChartHtml = `
         <div id="pdf-section-chart" class="card p-6 printable-section" style="page-break-inside: avoid;">
             <h3 class="text-2xl font-bold text-gray-800 mb-4">📊 ${student.name} 학생 점수 분포</h3>
@@ -256,7 +252,6 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
     `;
 
     // 2-4b. AI 종합 분석 박스 (2페이지용)
-    // (page-break-inside: avoid; 유지 - AI 분석 박스들은 통째로)
     const aiAnalysisHtml = `
         <div id="pdf-section-ai-boxes" class="card p-6 printable-section" style="page-break-inside: avoid;">
             <h3 class="text-2xl font-bold text-gray-800 mb-4">🤖 ${student.name} 학생 AI 종합 분석</h3>
@@ -286,17 +281,17 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
     });
 
     // 2-6. 문항 정오표 (테이블)
+    // ⭐️ [수정] 'data.studentData.answerRates' -> 'data.answerRates'
     const errataRows = student.answers.map((ans, i) => `
         <tr class="border-b ${!ans.isCorrect ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50'}">
             <td class="px-4 py-3 text-center font-medium ${!ans.isCorrect ? 'text-red-600' : ''}">${ans.qNum}번</td>
             <td class="px-6 py-3">${unitMap.get(ans.qNum) || ''}</td>
             <td class="px-4 py-3 text-center">${getDifficulty(ans.qNum, selectedClass)}</td>
             <td class="px-4 py-3 text-center font-bold ${ans.isCorrect ? 'text-blue-600' : 'text-red-600'}">${ans.isCorrect ? 'O' : 'X'}</td>
-            <td class="px-4 py-3 text-center">${data.studentData.answerRates[i] ?? 'N/A'}%</td>
+            <td class="px-4 py-3 text-center">${data.answerRates[i] ?? 'N/A'}%</td>
         </tr>
     `).join('');
 
-    // (page-break-inside: avoid 제거 - 테이블은 잘려도 됨)
     const errataHtml = `
         <div id="pdf-section-errata" class="card p-6 printable-section">
             <h3 class="text-2xl font-bold text-gray-800 mb-4">📋 문항 정오표</h3>
@@ -337,7 +332,6 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
         }
     }
     
-    // (page-break-inside: avoid 제거 - 테이블은 잘려도 됨)
     const solutionsHtml = `
         <div id="pdf-section-solutions" class="card p-6 printable-section">
             <h3 class="text-2xl font-bold text-gray-800 mb-4">🔍 오답 분석 및 대응 방안 (AI 기반)</h3>
@@ -370,19 +364,19 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
         <div class="report-page active" data-page-name="종합 분석">
             ${featuresHtml}
             ${commentHtml}
-            ${scoreChartHtml} {/* 1. 차트 (avoid 유지) */}
+            ${scoreChartHtml} 
         </div>
         
         <div class="report-page" data-page-name="AI 분석">
-            ${aiAnalysisHtml} {/* 2. AI 박스 (avoid 유지) */}
+            ${aiAnalysisHtml} 
         </div>
         
         <div class="report-page" data-page-name="문항 정오표">
-            ${errataHtml} {/* 3. 정오표 (avoid 제거) */}
+            ${errataHtml} 
         </div>
 
         <div class="report-page" data-page-name="오답 분석">
-            ${solutionsHtml} {/* 4. 오답 분석 (avoid 제거) */}
+            ${solutionsHtml} 
         </div>
     `;
 }
@@ -390,11 +384,16 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
 
 /**
  * ----------------------------------------------------------------
- * 3. 차트 렌더링 (단일 시험용)
+ * 3. 차트 렌더링 (단일 시험용) (수정됨)
  * ----------------------------------------------------------------
  */
 export function renderScoreChart(canvas, studentData, currentStudent) {
+    // ⭐️ [수정] 'studentData.students' -> 'studentData.students' (입력 파라미터가 이미 studentData 객체임)
     if (!canvas) return null;
+    if (!studentData || !studentData.students) { // ⭐️ 유효성 검사 추가
+         console.warn("renderScoreChart: studentData.students가 없습니다.");
+         return null;
+    }
     
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
@@ -406,7 +405,6 @@ export function renderScoreChart(canvas, studentData, currentStudent) {
         if (currentStudent && s.name === currentStudent.name) {
             return s.name; // 현재 학생 이름 강조
         }
-        // 반 전체 리포트에서는 모든 이름을 익명 처리
         return currentStudent ? `학생 ${index + 1}` : s.name;
     });
 
@@ -414,13 +412,13 @@ export function renderScoreChart(canvas, studentData, currentStudent) {
     
     const backgroundColors = sortedStudents.map(s => {
         return currentStudent && s.name === currentStudent.name 
-            ? 'rgba(59, 130, 246, 0.7)' // 'blue-500' (현재 학생)
-            : 'rgba(156, 163, 175, 0.5)'; // 'gray-400' (다른 학생)
+            ? 'rgba(59, 130, 246, 0.7)' 
+            : 'rgba(156, 163, 175, 0.5)'; 
     });
      const borderColors = sortedStudents.map(s => {
         return currentStudent && s.name === currentStudent.name 
-            ? 'rgba(37, 99, 235, 1)' // 'blue-600'
-            : 'rgba(107, 114, 128, 1)'; // 'gray-500'
+            ? 'rgba(37, 99, 235, 1)' 
+            : 'rgba(107, 114, 128, 1)'; 
     });
 
     return new Chart(ctx, {
@@ -436,10 +434,11 @@ export function renderScoreChart(canvas, studentData, currentStudent) {
                 order: 2
             }, {
                 label: '반 평균',
-                data: Array(scores.length).fill(studentData.classAverage),
+                // ⭐️ [수정] 'studentData.classAverage'
+                data: Array(scores.length).fill(studentData.classAverage), 
                 type: 'line',
                 fill: false,
-                borderColor: 'rgb(239, 68, 68)', // 'red-500'
+                borderColor: 'rgb(239, 68, 68)', 
                 backgroundColor: 'rgb(239, 68, 68)',
                 tension: 0.1,
                 borderWidth: 3,
@@ -457,7 +456,6 @@ export function renderScoreChart(canvas, studentData, currentStudent) {
                 },
                 x: {
                     ticks: {
-                        // 반 전체 리포트이고 학생 수가 10명 초과 시 이름 숨기기
                         display: (currentStudent || sortedStudents.length <= 10)
                     }
                 }
@@ -473,7 +471,6 @@ export function renderScoreChart(canvas, studentData, currentStudent) {
                 },
                 tooltip: {
                     callbacks: {
-                        // 반 전체 리포트에서만 실제 학생 이름 표시
                         label: function(context) {
                             let label = context.dataset.label || '';
                             if (label) {
@@ -509,20 +506,19 @@ export function renderCumulativeScoreChart(canvas, cumulativeData, studentName) 
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
 
-    // 데이터 포맷팅
-    const labels = cumulativeData.map(d => d.date); // X축 (날짜)
-    const studentScores = cumulativeData.map(d => d.studentScore); // Y축 (학생 점수)
-    const classAverages = cumulativeData.map(d => d.classAverage); // Y축 (반 평균)
+    const labels = cumulativeData.map(d => d.date); 
+    const studentScores = cumulativeData.map(d => d.studentScore); 
+    const classAverages = cumulativeData.map(d => d.classAverage); 
 
     return new Chart(ctx, {
-        type: 'line', // 차트 타입을 'line'으로 변경
+        type: 'line', 
         data: {
             labels: labels,
             datasets: [
                 {
                     label: `${studentName} 학생 점수`,
                     data: studentScores,
-                    borderColor: 'rgba(59, 130, 246, 1)', // 'blue-500'
+                    borderColor: 'rgba(59, 130, 246, 1)', 
                     backgroundColor: 'rgba(59, 130, 246, 0.1)',
                     fill: false,
                     tension: 0.1,
@@ -531,12 +527,12 @@ export function renderCumulativeScoreChart(canvas, cumulativeData, studentName) 
                 {
                     label: '반 평균',
                     data: classAverages,
-                    borderColor: 'rgba(239, 68, 68, 1)', // 'red-500'
+                    borderColor: 'rgba(239, 68, 68, 1)', 
                     backgroundColor: 'rgba(239, 68, 68, 0.1)',
                     fill: false,
                     tension: 0.1,
                     borderWidth: 2,
-                    borderDash: [5, 5], // 평균은 점선으로 표시
+                    borderDash: [5, 5], 
                 }
             ]
         },
@@ -550,7 +546,6 @@ export function renderCumulativeScoreChart(canvas, cumulativeData, studentName) 
                 },
                 x: {
                     ticks: {
-                        // 날짜가 너무 많으면 일부만 표시
                         autoSkip: true,
                         maxTicksLimit: 10 
                     }
