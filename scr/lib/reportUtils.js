@@ -31,10 +31,9 @@ function getDifficulty(qNum, selectedClass) {
 }
 
 /**
- * ⭐️ [수정] '여백 최소화' + '높이 정렬(start)' + '데이터 구조 변경' 버전
+ * ⭐️ [수정] '여백 최소화' + '높이 정렬(start)' 버전으로 함수 교체
  */
 function generateOverallFeaturesHTML(data, aiOverallAnalysis) {
-    // ⭐️ [수정] 'data.studentData.students' -> 'data.students'
     const submittedStudents = data.students.filter(s => s.submitted);
     let featuresHtml = '';
 
@@ -50,13 +49,11 @@ function generateOverallFeaturesHTML(data, aiOverallAnalysis) {
         const minScore = Math.min(...scores);
 
         const allCorrectQuestions = [];
-        // ⭐️ [수정] 'data.studentData.answerRates' -> 'data.answerRates'
         data.answerRates.forEach((rate, i) => {
             if (rate === 100) allCorrectQuestions.push(i + 1);
         });
 
         const highErrorRateQuestions = [];
-        // ⭐️ [수정] 'data.studentData.answerRates' -> 'data.answerRates'
         data.answerRates.forEach((rate, i) => {
             if (rate <= 40) highErrorRateQuestions.push({ qNum: i + 1, rate: rate });
         });
@@ -64,28 +61,35 @@ function generateOverallFeaturesHTML(data, aiOverallAnalysis) {
         featuresHtml = `
             <div id="pdf-section-features" class="card p-3 printable-section mb-2">
                 <h3 class="text-xl font-bold text-gray-800 mb-2">💡 반 전체 주요 특징</h3>
-                <div class="grid md:grid-cols-3 gap-2" style="align-items: start;">
-                    <div class="bg-indigo-50 rounded border border-indigo-200 p-1">
+                {/* ⭐️ [수정] align-items: start 제거 (높이 자동 정렬) */}
+                <div class="grid md:grid-cols-3 gap-2">
+                    
+                    {/* ⭐️ [수정] 점수 분포 (파란색) - flex, max-h 추가 */}
+                    <div class="bg-indigo-50 rounded border border-indigo-200 p-1 flex flex-col justify-between">
                         <h4 class="font-semibold text-indigo-800 text-sm mb-0.5">📈 점수 분포</h4>
-                        <p class="text-indigo-700 text-sm leading-tight">
-                            {/* ⭐️ [수정] 'data.studentData.classAverage' -> 'data.classAverage' */}
+                        <div class="flex-1 overflow-y-auto text-indigo-700 text-sm leading-tight break-words max-h-[5.5rem]">
                             최고 ${maxScore}점, 최저 ${minScore}점, 평균 ${data.classAverage}점
-                        </p>
+                        </div>
                     </div>
-                    <div class="bg-green-50 rounded border border-green-200 p-1">
+                    
+                    {/* ⭐️ [수정] 전원 정답 (녹색) - flex, max-h 추가 */}
+                    <div class="bg-green-50 rounded border border-green-200 p-1 flex flex-col justify-between">
                         <h4 class="font-semibold text-green-800 text-sm mb-0.5">✅ 전원 정답 문항</h4>
-                        <p class="text-green-700 text-sm leading-tight">
+                        <div class="flex-1 overflow-y-auto text-green-700 text-sm leading-tight break-words max-h-[5.5rem]">
                             ${allCorrectQuestions.length > 0 ? allCorrectQuestions.map(q => `${q}번`).join(', ') : '없음'}
-                        </p>
+                        </div>
                     </div>
+
+                    {/* ⭐️ [수정] 오답 문항 (붉은색) - max-h 5.5rem으로 변경 */}
                     <div class="bg-red-50 rounded border border-red-200 p-1 flex flex-col justify-between">
                         <h4 class="font-semibold text-red-800 text-sm mb-0.5">❌ 오답률 높은 문항 (40% 이하)</h4>
-                        <div class="flex-1 overflow-y-auto text-red-700 text-sm leading-tight break-words max-h-[4rem]">
+                        <div class="flex-1 overflow-y-auto text-red-700 text-sm leading-tight break-words max-h-[5.5rem]">
                             ${highErrorRateQuestions.length > 0 
                                 ? highErrorRateQuestions.map(q => `${q.qNum}번(${q.rate}%)`).join(', ')
                                 : '없음'}
                         </div>
                     </div>
+                    {/* --- [수정] 완료 --- */}
                 </div>
             </div>
         `;
@@ -96,12 +100,10 @@ function generateOverallFeaturesHTML(data, aiOverallAnalysis) {
 
 /**
  * ----------------------------------------------------------------
- * 1. 반 전체 리포트 HTML 생성 (수정됨)
+ * 1. 반 전체 리포트 HTML 생성
  * ----------------------------------------------------------------
  */
 export function generateOverallReportHTML(data, aiOverallAnalysis, selectedClass, selectedDate) {
-    
-    // (data 객체는 이제 studentData를 포함하지 않고, classAverage 등을 직접 가짐)
     
     // 1-1. 반 전체 주요 특징 (상단 3개 박스)
     const featuresHtml = generateOverallFeaturesHTML(data, aiOverallAnalysis); // ⭐️ 수정된 함수 호출
@@ -203,15 +205,13 @@ export function generateOverallReportHTML(data, aiOverallAnalysis, selectedClass
 
 /**
  * ----------------------------------------------------------------
- * 2. 학생 개별 리포트 HTML 생성 (수정됨)
+ * 2. 학생 개별 리포트 HTML 생성
  * ----------------------------------------------------------------
  */
 export function generateIndividualReportHTML(student, data, aiAnalysis, aiOverallAnalysis, selectedClass, selectedDate) {
     
-    // (data 객체는 이제 studentData를 포함하지 않고, classAverage 등을 직접 가짐)
-
     // 2-1. 미응시 학생 처리
-    if (!student || !student.submitted) { // ⭐️ 'student' 객체 자체도 null일 수 있음
+    if (!student || !student.submitted) { 
         return `
             <div class="text-center my-4 print:hidden">
                 <h2 class="text-3xl font-bold text-gray-800">${selectedClass} ${selectedDate}</h2>
@@ -281,7 +281,6 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
     });
 
     // 2-6. 문항 정오표 (테이블)
-    // ⭐️ [수정] 'data.studentData.answerRates' -> 'data.answerRates'
     const errataRows = student.answers.map((ans, i) => `
         <tr class="border-b ${!ans.isCorrect ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50'}">
             <td class="px-4 py-3 text-center font-medium ${!ans.isCorrect ? 'text-red-600' : ''}">${ans.qNum}번</td>
@@ -384,13 +383,12 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
 
 /**
  * ----------------------------------------------------------------
- * 3. 차트 렌더링 (단일 시험용) (수정됨)
+ * 3. 차트 렌더링 (단일 시험용)
  * ----------------------------------------------------------------
  */
 export function renderScoreChart(canvas, studentData, currentStudent) {
-    // ⭐️ [수정] 'studentData.students' -> 'studentData.students' (입력 파라미터가 이미 studentData 객체임)
     if (!canvas) return null;
-    if (!studentData || !studentData.students) { // ⭐️ 유효성 검사 추가
+    if (!studentData || !studentData.students) { 
          console.warn("renderScoreChart: studentData.students가 없습니다.");
          return null;
     }
@@ -434,7 +432,6 @@ export function renderScoreChart(canvas, studentData, currentStudent) {
                 order: 2
             }, {
                 label: '반 평균',
-                // ⭐️ [수정] 'studentData.classAverage'
                 data: Array(scores.length).fill(studentData.classAverage), 
                 type: 'line',
                 fill: false,

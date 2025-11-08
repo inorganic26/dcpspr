@@ -2,12 +2,15 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useReportContext } from './context/ReportContext';
-// ⭐️ [수정] 'loadDataFromFirestore', 'saveDataToFirestore' 대신 신규 함수들 임포트
 import { 
     loginTeacher, registerTeacher, 
     loadReportSummaries, loadReportDetails, 
     deleteReport, deleteStudentFromReport 
 } from './hooks/useFirebase';
+// ⭐️ [마이그레이션] Firestore 핵심 기능 직접 임포트
+import { doc, getDoc, writeBatch } from 'firebase/firestore';
+import { db } from './lib/firebaseConfig'; // ⭐️ [마이그레이션] db 임포트
+
 import { useFileProcessor } from './hooks/useFileProcessor';
 import { useReportGenerator } from './hooks/useReportGenerator';
 import { useChartAndPDF } from './hooks/useChartAndPDF';
@@ -19,14 +22,22 @@ import { auth } from './lib/firebaseConfig';
 
 import { Home, ArrowLeft, UploadCloud, FileText, Loader, TriangleAlert, Save, PlusCircle, CalendarDays, LogOut, User, Trash2 } from 'lucide-react';
 
-// ... (Page1_Upload 컴포넌트는 기존과 동일) ...
-const Page1_Upload = ({ handleFileChange, handleFileProcess, fileInputRef, selectedFiles, handleFileDrop }) => { 
+// ... (Page1_Upload 컴포넌트 대폭 수정) ...
+const Page1_Upload = ({ handleFileChange, handleFileProcess, fileInputRef, selectedFiles, handleFileDrop, handleMigration, isMigrating }) => { 
     const { 
         processing, errorMessage, uploadDate, setUploadDate, showPage, 
-        // ⭐️ [수정] 'testData' 대신 'reportSummaries'
         reportSummaries, setSelectedDate, setErrorMessage 
     } = useReportContext();
     const [isDragging, setIsDragging] = useState(false); 
+    
+    // --- ⭐️ [신규] '직접 입력'을 위한 상태 ---
+    const [inputType, setInputType] = useState('file'); // 'file' or 'direct'
+    const [directClassName, setDirectClassName] = useState('');
+    const [directQuestionCount, setDirectQuestionCount] = useState(20);
+    const [directStudents, setDirectStudents] = useState([]);
+    const [directForm, setDirectForm] = useState({ name: '', score: '', answers: '' });
+    // ---
+
     const handleDragOver = (e) => { e.preventDefault(); e.stopPropagation(); if (!isDragging) setIsDragging(true); };
     const handleDragLeave = (e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); };
     const handleDrop = (e) => {
@@ -54,19 +65,64 @@ const Page1_Upload = ({ handleFileChange, handleFileProcess, fileInputRef, selec
     
     const handleViewExistingByDate = () => {
         if (!uploadDate) { setErrorMessage('먼저 조회할 날짜를 선택해주세요.'); return; }
-        
-        // ⭐️ [수정] 'reportSummaries'에서 날짜 검색
         const allDates = new Set(reportSummaries.map(r => r.date));
-        
         if (allDates.has(uploadDate)) { 
             setErrorMessage(''); 
             setSelectedDate(uploadDate); 
-            showPage('page2'); // 반 선택 페이지로 이동
+            showPage('page2'); 
         } else { 
             setErrorMessage(`'${uploadDate}'에 해당하는 분석된 리포트가 없습니다. \n다른 날짜를 선택하거나 '모든 날짜 보기'를 클릭하세요.`); 
         }
     };
     
+    // --- ⭐️ [신규] '직접 입력' 학생 추가 핸들러 ---
+    const handleAddStudent = (e) => {
+        e.preventDefault();
+        setErrorMessage('');
+        
+        const { name, score, answers } = directForm;
+        const qCount = parseInt(directQuestionCount);
+
+        if (!name || !score || !answers || qCount <= 0) {
+            setErrorMessage('이름, 총점, 총 문항 수, 정답을 모두 입력해야 합니다.');
+            return;
+        }
+
+        const answerArray = answers.trim().toUpperCase().split(/[\s,]+/); // 쉼표 또는 공백으로 분리
+
+        if (answerArray.length !== qCount) {
+            setErrorMessage(`정답 개수(${answerArray.length}개)가 총 문항 수(${qCount}개)와 일치하지 않습니다.`);
+            return;
+        }
+
+        // 'fileParser.js'가 이해하는 형식으로 객체 생성
+        const newStudent = {
+            "이름": name,
+            "총점": parseFloat(score),
+        };
+        
+        answerArray.forEach((ans, index) => {
+            newStudent[index + 1] = ans; // "1": "O", "2": "X"
+        });
+
+        setDirectStudents(prev => [...prev, newStudent]);
+        setDirectForm({ name: '', score: '', answers: '' }); // 폼 초기화
+    };
+
+    // --- ⭐️ [신규] '직접 입력' 학생 삭제 핸들러 ---
+    const handleRemoveStudent = (indexToRemove) => {
+        setDirectStudents(prev => prev.filter((_, index) => index !== indexToRemove));
+    };
+
+    // --- ⭐️ [신규] '분석 시작하기' 버튼 클릭 핸들러 ---
+    const onProcessStart = () => {
+        // 'handleFileProcess'에 현재 입력 모드와 직접 입력 데이터를 전달
+        handleFileProcess(inputType, {
+            className: directClassName,
+            students: directStudents,
+        });
+    };
+
     return (
         <div id="fileUploadCard" className="card">
             <h2 className="text-2xl font-bold text-center mb-6 text-gray-700">AI 성적 리포트 분석기</h2>
@@ -74,47 +130,159 @@ const Page1_Upload = ({ handleFileChange, handleFileProcess, fileInputRef, selec
                 <label htmlFor="dateInput" className="block text-sm font-medium text-gray-700 mb-1">시험 날짜 (필수)</label>
                 <div className="relative"><input type="date" id="dateInput" className="w-full px-4 py-2 border border-gray-300 rounded-lg" value={isoDate} onChange={handleDateChange} /></div>
             </div>
-            <p className="text-center text-gray-600 mb-6">분석할 PDF 시험지 파일과 학생 성적 데이터(CSV 또는 XLSX)를 함께 업로드해주세요. (파일 이름에 **반 이름**이 포함되어야 합니다)</p>
+
+            <p className="text-center text-gray-600 mb-6">
+                분석할 **PDF 시험지 파일**을 업로드하고, 성적표 입력 방식을 선택해주세요.
+            </p>
+
+            {/* --- ⭐️ [신규] PDF 업로드 (항상 필수) --- */}
             <div className={`p-6 border-2 border-dashed rounded-xl transition-colors mb-4 ${ isDragging ? 'border-indigo-500 bg-indigo-50' : 'border-gray-300 hover:border-gray-400' }`} onDragOver={handleDragOver} onDragEnter={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
                 <div className="flex flex-col items-center justify-center space-y-3">
                     <UploadCloud size={30} className={`text-gray-400 transition-colors ${isDragging ? 'text-indigo-600' : ''}`} />
-                    <p className={`text-lg font-semibold transition-colors ${isDragging ? 'text-indigo-600' : 'text-gray-500'}`}>파일을 여기에 드래그하거나</p>
-                    <label htmlFor="fileInput" className="btn btn-primary cursor-pointer max-w-xs"><span>파일 선택하기</span></label>
-                    <input type="file" id="fileInput" ref={fileInputRef} className="hidden" multiple accept=".pdf,.csv,.xlsx" onChange={handleFileChange} />
+                    <p className={`text-lg font-semibold transition-colors ${isDragging ? 'text-indigo-600' : 'text-gray-500'}`}>PDF 시험지 파일을 여기에 드래그하거나</p>
+                    <label htmlFor="fileInput" className="btn btn-primary cursor-pointer max-w-xs">
+                        <span>{selectedFiles.some(f => f.name.endsWith('.pdf')) ? 'PDF 파일 선택됨' : 'PDF 파일 선택하기'}</span>
+                    </label>
+                    <input type="file" id="fileInput" ref={fileInputRef} className="hidden" multiple 
+                           accept=".pdf,.csv,.xlsx" // ⭐️ '파일' 모드를 위해 accept는 유지
+                           onChange={handleFileChange} />
                 </div>
             </div>
-            {selectedFiles.length > 0 && (
-                <div id="fileListContainer" className="mb-4">
-                    <h4 className="font-semibold mb-2 text-gray-600">선택된 파일:</h4>
-                    <ul id="fileList" className="list-disc list-inside bg-gray-50 p-4 rounded-lg text-sm text-gray-700 max-h-40 overflow-y-auto">
-                        {selectedFiles.map((file, index) => <li key={index}>{file.name}</li>)}
-                    </ul>
+            
+            {/* --- ⭐️ [신규] 입력 방식 선택 UI --- */}
+            <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">성적표 입력 방식 (필수)</label>
+                <div className="flex justify-center gap-4">
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                        <input type="radio" name="inputType" value="file" checked={inputType === 'file'} onChange={() => setInputType('file')} className="radio radio-primary"/>
+                        <span className="label-text">엑셀/CSV 파일 업로드</span>
+                    </label>
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                        <input type="radio" name="inputType" value="direct" checked={inputType === 'direct'} onChange={() => setInputType('direct')} className="radio radio-primary"/>
+                        <span className="label-text">정오표 직접 입력</span>
+                    </label>
+                </div>
+            </div>
+            
+            {/* --- ⭐️ [수정] '파일 업로드' 모드 UI --- */}
+            {inputType === 'file' && (
+                <div className="mb-4">
+                    <p className="text-center text-gray-600 mb-4">
+                        (파일 이름에 **반 이름**이 포함된 PDF와 엑셀/CSV 파일을 함께 선택해주세요)
+                    </p>
+                    {selectedFiles.length > 0 && (
+                        <div id="fileListContainer" className="mb-4">
+                            <h4 className="font-semibold mb-2 text-gray-600">선택된 파일:</h4>
+                            <ul id="fileList" className="list-disc list-inside bg-gray-50 p-4 rounded-lg text-sm text-gray-700 max-h-40 overflow-y-auto">
+                                {selectedFiles.map((file, index) => <li key={index}>{file.name}</li>)}
+                            </ul>
+                        </div>
+                    )}
                 </div>
             )}
+            
+            {/* --- ⭐️ [신규] '직접 입력' 모드 UI --- */}
+            {inputType === 'direct' && (
+                <div className="mb-4 p-4 border rounded-lg bg-gray-50 space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label htmlFor="directClassName" className="block text-sm font-medium text-gray-700 mb-1">반 이름 (필수)</label>
+                            <input type="text" id="directClassName" className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                                   value={directClassName} onChange={(e) => setDirectClassName(e.target.value)} placeholder="예: 고1A반"/>
+                        </div>
+                        <div>
+                            <label htmlFor="directQuestionCount" className="block text-sm font-medium text-gray-700 mb-1">총 문항 수 (필수)</label>
+                            <input type="number" id="directQuestionCount" className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                                   value={directQuestionCount} onChange={(e) => setDirectQuestionCount(parseInt(e.target.value))} min="1"/>
+                        </div>
+                    </div>
+                    
+                    <form onSubmit={handleAddStudent} className="space-y-3 p-3 border-t">
+                        <h4 className="font-semibold text-gray-700">학생 추가</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <input type="text" placeholder="학생 이름" className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                                   value={directForm.name} onChange={(e) => setDirectForm(f => ({...f, name: e.target.value}))}/>
+                            <input type="number" placeholder="총점" className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                                   value={directForm.score} onChange={(e) => setDirectForm(f => ({...f, score: e.target.value}))}/>
+                            <input type="text" placeholder="정답 (예: O,X,O,X...)" className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                                   value={directForm.answers} onChange={(e) => setDirectForm(f => ({...f, answers: e.target.value}))}/>
+                        </div>
+                        <button type="submit" className="btn btn-secondary btn-sm w-full">학생 추가</button>
+                    </form>
+                    
+                    {directStudents.length > 0 && (
+                        <div className="overflow-x-auto max-h-48 border-t pt-2">
+                             <table className="table table-zebra table-xs w-full">
+                                <thead>
+                                    <tr>
+                                        <th>이름</th>
+                                        <th>총점</th>
+                                        <th>정답(1~{directQuestionCount})</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {directStudents.map((student, index) => (
+                                        <tr key={index}>
+                                            <td>{student["이름"]}</td>
+                                            <td>{student["총점"]}</td>
+                                            <td className="truncate max-w-xs">
+                                                {Array.from({ length: directQuestionCount }, (_, i) => student[i + 1]).join(', ')}
+                                            </td>
+                                            <td>
+                                                <button onClick={() => handleRemoveStudent(index)} className="btn btn-ghost btn-xs text-red-500">
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            )}
+
+
             {errorMessage && ( <div id="error-message" className="text-red-600 bg-red-100 p-3 rounded-lg mb-4 text-sm" dangerouslySetInnerHTML={{ __html: errorMessage.replace(/\n/g, '<br>') }} /> )}
-            <button id="processBtn" className="btn btn-primary w-full text-lg" disabled={processing || selectedFiles.length === 0} onClick={handleFileProcess}>
+            
+            {/* ⭐️ [수정] '분석 시작하기' 버튼 로직 변경 */}
+            <button id="processBtn" className="btn btn-primary w-full text-lg" 
+                    disabled={processing || isMigrating}
+                    onClick={onProcessStart}>
                 {processing && <span id="loader" className="spinner" style={{ borderColor: 'white', borderBottomColor: 'transparent', width: '20px', height: '20px', marginRight: '8px' }}></span>}
                 <span>{processing ? '분석 중...' : '분석 시작하기'}</span>
             </button>
+            
             <div className="grid grid-cols-2 gap-4 mt-4">
-                <button className="btn btn-primary w-full text-md" onClick={handleViewExistingByDate} disabled={processing}><CalendarDays size={18} className="mr-2" /> 선택 날짜 조회</button>
-                <button className="btn btn-secondary w-full text-md" onClick={() => { setErrorMessage(''); showPage('page3'); }} disabled={processing}>모든 날짜 보기</button>
+                <button className="btn btn-primary w-full text-md" onClick={handleViewExistingByDate} disabled={processing || isMigrating}><CalendarDays size={18} className="mr-2" /> 선택 날짜 조회</button>
+                <button className="btn btn-secondary w-full text-md" onClick={() => { setErrorMessage(''); showPage('page3'); }} disabled={processing || isMigrating}>모든 날짜 보기</button>
+            </div>
+            
+            <div className="mt-4 border-t pt-4">
+                <button 
+                    className="btn btn-accent w-full text-md" 
+                    onClick={handleMigration} 
+                    disabled={isMigrating || processing}
+                >
+                    {isMigrating && <span id="loader" className="spinner" style={{ borderColor: 'white', borderBottomColor: 'transparent', width: '20px', height: '20px', marginRight: '8px' }}></span>}
+                    {isMigrating ? '데이터 변환 중...' : '[일회용] 기존 데이터 변환'}
+                </button>
+                <p className="text-xs text-gray-500 text-center mt-2">
+                    (이전 버전에서 업로드한 데이터가 보이지 않을 경우, 이 버튼을 한 번만 눌러주세요.)
+                </p>
             </div>
         </div>
     );
 };
 
-// ... (Page2_ClassSelect 컴포넌트 수정) ...
+// ... (Page2_ClassSelect, Page3_DateSelect, Page4_ReportSelect, Page5_ReportDisplay, LoginPage 컴포넌트는 이전 답변과 동일) ...
 const Page2_ClassSelect = ({ handleDeleteClass, selectedDate, handleSelectReport }) => { 
-    // ⭐️ [수정] 'testData' 대신 'reportSummaries'
     const { reportSummaries, setSelectedClass, showPage, setSelectedReportId } = useReportContext();
-    
-    // ⭐️ [수정] 선택된 날짜에 해당하는 '반 이름' 목록을 'reportSummaries'에서 찾기
     const classesForDate = reportSummaries
         .filter(r => r.date === selectedDate)
         .map(r => r.className);
-    
-    const uniqueClasses = [...new Set(classesForDate)]; // 중복 제거
+    const uniqueClasses = [...new Set(classesForDate)]; 
 
     return (
         <div className="card">
@@ -125,13 +293,11 @@ const Page2_ClassSelect = ({ handleDeleteClass, selectedDate, handleSelectReport
                         <div key={className} className="relative flex w-full">
                             <button 
                                 className="btn btn-secondary w-full text-left pr-12" 
-                                // ⭐️ [수정] 클릭 시 'reportId'를 찾아 App.jsx의 핸들러 호출
                                 onClick={() => {
                                     const report = reportSummaries.find(r => r.date === selectedDate && r.className === className);
                                     if (report) {
                                         setSelectedReportId(report.id);
                                         setSelectedClass(className);
-                                        // App.jsx의 loadAndShowReport 함수가 호출됨
                                         handleSelectReport(report.id, 'page4'); 
                                     }
                                 }}
@@ -142,7 +308,6 @@ const Page2_ClassSelect = ({ handleDeleteClass, selectedDate, handleSelectReport
                                 className="absolute right-1 top-1 bottom-1 btn btn-secondary h-auto px-2 text-red-500 hover:bg-red-100 hover:border-red-300" 
                                 onClick={(e) => {
                                     e.stopPropagation();
-                                    // ⭐️ [수정] 삭제 핸들러가 reportId를 찾도록 전달
                                     const report = reportSummaries.find(r => r.date === selectedDate && r.className === className);
                                     if(report) {
                                         handleDeleteClass(report.id, className, selectedDate); 
@@ -159,13 +324,8 @@ const Page2_ClassSelect = ({ handleDeleteClass, selectedDate, handleSelectReport
         </div>
     );
 };
-
-// ... (Page3_DateSelect 컴포넌트 수정) ...
 const Page3_DateSelect = ({ handleDeleteDate }) => { 
-    // ⭐️ [수정] 'testData' 대신 'reportSummaries'
     const { reportSummaries, setSelectedDate, showPage } = useReportContext();
-    
-    // ⭐️ [수정] 'reportSummaries'에서 모든 날짜 추출
     const allDates = new Set(reportSummaries.map(r => r.date));
     const uniqueDates = Array.from(allDates);
 
@@ -180,7 +340,7 @@ const Page3_DateSelect = ({ handleDeleteDate }) => {
                                 className="btn btn-secondary w-full text-left pr-12" 
                                 onClick={() => { 
                                     setSelectedDate(date); 
-                                    showPage('page2'); // 반 선택 페이지로 이동
+                                    showPage('page2'); 
                                 }}
                             >
                                 {date}
@@ -189,7 +349,7 @@ const Page3_DateSelect = ({ handleDeleteDate }) => {
                                 className="absolute right-1 top-1 bottom-1 btn btn-secondary h-auto px-2 text-red-500 hover:bg-red-100 hover:border-red-300" 
                                 onClick={(e) => {
                                     e.stopPropagation(); 
-                                    handleDeleteDate(date); // App.jsx의 삭제 핸들러
+                                    handleDeleteDate(date); 
                                 }}
                                 title={`${date} 데이터 삭제`}
                             >
@@ -204,14 +364,8 @@ const Page3_DateSelect = ({ handleDeleteDate }) => {
         </div>
     );
 };
-
-
-// ... (Page4_ReportSelect 컴포넌트 수정) ...
 const Page4_ReportSelect = ({ handleDeleteStudent, selectedClass, selectedDate, handleSelectReport }) => { 
-    // ⭐️ [수정] 'testData' 대신 'currentReportData'
     const { currentReportData, selectedStudent, setSelectedStudent, showPage, selectedReportId } = useReportContext();
-    
-    // ⭐️ [수정] 데이터 참조 변경 (currentReportData.students)
     const students = currentReportData?.students || [];
     
     return (
@@ -224,7 +378,6 @@ const Page4_ReportSelect = ({ handleDeleteStudent, selectedClass, selectedDate, 
                     className={`btn btn-secondary w-full ${selectedStudent === null ? 'btn-nav-active' : ''}`}
                     onClick={() => { 
                         setSelectedStudent(null); 
-                        // ⭐️ [수정] App.jsx의 핸들러 호출
                         handleSelectReport(selectedReportId, 'page5'); 
                     }}
                 >
@@ -237,7 +390,6 @@ const Page4_ReportSelect = ({ handleDeleteStudent, selectedClass, selectedDate, 
                             className={`btn btn-secondary w-full text-left pr-10 ${selectedStudent === student.name ? 'btn-nav-active' : ''}`} 
                             onClick={() => { 
                                 setSelectedStudent(student.name); 
-                                // ⭐️ [수정] App.jsx의 핸들러 호출
                                 handleSelectReport(selectedReportId, 'page5'); 
                             }}
                         >
@@ -247,7 +399,6 @@ const Page4_ReportSelect = ({ handleDeleteStudent, selectedClass, selectedDate, 
                             className="absolute right-1 top-1 bottom-1 btn btn-secondary h-auto px-2 text-red-500 hover:bg-red-100 hover:border-red-300"
                             onClick={(e) => {
                                 e.stopPropagation();
-                                // ⭐️ [수정] 삭제 핸들러 호출
                                 handleDeleteStudent(student.name, selectedClass, selectedDate); 
                             }}
                             title={`${student.name} 학생 데이터 삭제`}
@@ -260,9 +411,6 @@ const Page4_ReportSelect = ({ handleDeleteStudent, selectedClass, selectedDate, 
         </div>
     );
 };
-
-
-// ... (Page5_ReportDisplay, LoginPage 컴포넌트는 기존과 동일) ...
 const Page5_ReportDisplay = () => { 
     const { reportHTML } = useReportContext();
     const reportContentRef = usePagination(); 
@@ -336,7 +484,6 @@ const App = () => {
         errorMessage, setErrorMessage,
         currentTeacher, setCurrentTeacher,
         
-        // ⭐️ [수정] 'testData' 대신 신규 상태 사용
         reportSummaries, setReportSummaries,
         setCurrentReportData,
         selectedReportId, setSelectedReportId,
@@ -347,43 +494,34 @@ const App = () => {
     const [isAuthenticating, setIsAuthenticating] = useState(true); 
     const [isLoggingIn, setIsLoggingIn] = useState(false);
     const [loginError, setLoginError] = useState('');
+    const [isMigrating, setIsMigrating] = useState(false);
 
-    // ⭐️ [수정] 'saveDataToFirestore' prop 제거
-    const { fileInputRef, selectedFiles, handleFileChange, handleFileProcess, handleFileDrop } = useFileProcessor({
-        /* saveDataToFirestore: ... 제거 */
-    });
+    // ⭐️ [수정] 'handleFileProcess'가 App.jsx에서 인자를 받도록 수정
+    const { fileInputRef, selectedFiles, handleFileChange, handleFileProcess, handleFileDrop } = useFileProcessor();
     const { goBack, goHome } = useReportNavigation();
     
-    // ⭐️ [수정] 'useReportGenerator'는 더 이상 props가 필요 없음
     useReportGenerator(); 
-    
     const { handlePdfSave } = useChartAndPDF(); 
     
     // (네트워크 모니터링, 익명 인증 useEffect는 변경 없음)
     useEffect(() => {
-        // ... (네트워크 모니터링) ...
+        // ...
     }, [setErrorMessage]); 
 
     useEffect(() => {
         const authenticate = async () => {
             try {
                 if (!auth.currentUser) { 
-                    console.log("[Auth] 익명 로그인 시도...");
                     await signInAnonymously(auth);
-                    console.log("[Auth] 익명 로그인 성공:", auth.currentUser.uid);
-                } else {
-                    console.log("[Auth] 기존 세션 유지:", auth.currentUser.uid);
                 }
                 setIsAuthenticating(false); 
             } catch (error) {
-                console.error("[Auth] 익명 로그인 실패:", error);
                 setLoginError("Firebase 인증에 실패했습니다. " + error.message);
                 setIsAuthenticating(false); 
             }
         };
         authenticate();
     }, []); 
-
 
     // (handleLogin, handleRegister 핸들러는 변경 없음)
     const handleLogin = async (name, phone) => {
@@ -415,21 +553,18 @@ const App = () => {
         }
     };
     
-    // ⭐️ [수정] 'performSuccessfulLogin' (요약 정보 로드)
+    // (performSuccessfulLogin 핸들러는 변경 없음)
     const performSuccessfulLogin = async (teacher) => {
         setCurrentTeacher(teacher); 
         setInitialLoading(true); 
         
         try {
-            // ⭐️ [수정] 'loadDataFromFirestore' -> 'loadReportSummaries'
             const loadedSummaries = await loadReportSummaries(); 
             setReportSummaries(loadedSummaries || []); 
-
         } catch (error) {
             console.error("데이터 요약 로드 실패:", error);
             setLoginError("로그인은 성공했으나 요약 로드에 실패했습니다: " + error.message);
             setReportSummaries([]); 
-
         } finally {
             setInitialLoading(false); 
             setIsLoggingIn(false);
@@ -438,13 +573,13 @@ const App = () => {
 
     const handleLogout = () => {
         setCurrentTeacher(null);
-        setReportSummaries([]); // ⭐️ [수정]
-        resetSelections(); // ⭐️ [수정]
+        setReportSummaries([]); 
+        resetSelections(); 
         showPage('page1');
         setErrorMessage('');
     };
     
-    // ⭐️ [신규] 리포트 상세 데이터 로드 함수
+    // (loadAndShowReport 핸들러는 변경 없음)
     const loadAndShowReport = useCallback(async (reportId, pageToShow) => {
         if (!reportId) return;
         setInitialLoading(true);
@@ -454,34 +589,25 @@ const App = () => {
             showPage(pageToShow);
         } catch (error) {
             setErrorMessage("리포트 상세 내역 로드 실패: " + error.message);
-            showPage('page3'); // 오류 시 날짜 선택으로
+            showPage('page3'); 
         } finally {
             setInitialLoading(false);
         }
     }, [setCurrentReportData, setInitialLoading, setErrorMessage, showPage]);
 
     
-    // ⭐️ [수정] 'handleDeleteDate' (날짜별 삭제)
+    // (handleDeleteDate, handleDeleteClass 핸들러는 변경 없음)
     const handleDeleteDate = async (dateToDelete) => {
         if (!window.confirm(`'${dateToDelete}'의 모든 분석 데이터를 정말 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`)) {
             return;
         }
-
         setErrorMessage('삭제 중...'); 
         setInitialLoading(true); 
-
-        // ⭐️ [수정] 삭제할 리포트 ID 목록 찾기
         const reportsToDelete = reportSummaries.filter(r => r.date === dateToDelete);
-        
         try {
-            // ⭐️ [수정] 'deleteReport' 함수 병렬 호출
             await Promise.all(reportsToDelete.map(report => deleteReport(report.id)));
-            
-            // ⭐️ [수정] 로컬 'reportSummaries' 상태 업데이트
             setReportSummaries(prev => prev.filter(r => r.date !== dateToDelete));
-            
             setErrorMessage(''); 
-            
         } catch (error) {
             console.error("데이터 삭제 실패:", error);
             setErrorMessage("데이터 삭제 중 오류가 발생했습니다: " + error.message);
@@ -489,31 +615,24 @@ const App = () => {
             setInitialLoading(false); 
         }
     };
-    
-    // ⭐️ [수정] 'handleDeleteClass' (반별 삭제)
     const handleDeleteClass = async (reportId, className, date) => {
         if (!window.confirm(`'${date}'의 '${className}'반 데이터를 정말 삭제하시겠습니까?`)) {
             return;
         }
         setInitialLoading(true); 
         try {
-            // ⭐️ [수정] 'deleteReport' 함수 호출
             await deleteReport(reportId);
-            
-            // ⭐️ [수정] 로컬 'reportSummaries' 상태 업데이트
             setReportSummaries(prev => prev.filter(r => r.id !== reportId));
-
         } catch (error) {
             setErrorMessage("반 데이터 삭제 중 오류: " + error.message);
         } finally {
             setInitialLoading(false);
-            // ⭐️ [수정] 현재 페이지에 머무름 (Page2_ClassSelect)
         }
     };
 
-    // ⭐️ [수정] 'handleDeleteStudent' (학생별 삭제)
+    // ⭐️ [수정] 'handleDeleteStudent' (통계 재계산 적용)
     const handleDeleteStudent = async (studentName, className, date) => {
-        if (!window.confirm(`'${date}' - '${className}'반의 '${studentName}' 학생 데이터를 정말 삭제하시겠습니까?\n\n(참고: 학생 삭제 시 반 전체 평균이 자동으로 재계산되지는 않습니다.)`)) {
+        if (!window.confirm(`'${date}' - '${className}'반의 '${studentName}' 학생 데이터를 정말 삭제하시겠습니까?`)) {
             return;
         }
         if (!selectedReportId) {
@@ -523,13 +642,16 @@ const App = () => {
         
         setInitialLoading(true); 
         try {
-            // ⭐️ [수정] 'deleteStudentFromReport' 함수 호출
-            await deleteStudentFromReport(selectedReportId, studentName);
+            // ⭐️ [수정] 'deleteStudentFromReport'는 이제 'newStats'를 반환
+            const newStats = await deleteStudentFromReport(selectedReportId, studentName);
             
-            // ⭐️ [수정] 로컬 'currentReportData' 상태 업데이트
+            // ⭐️ [수정] 로컬 'currentReportData' 상태 업데이트 (학생 제거 + 통계 갱신)
             setCurrentReportData(prev => ({
                 ...prev,
-                students: prev.students.filter(s => s.name !== studentName)
+                students: prev.students.filter(s => s.name !== studentName),
+                studentCount: newStats.studentCount,
+                classAverage: newStats.classAverage,
+                answerRates: newStats.answerRates
             }));
             
         } catch (error) {
@@ -540,8 +662,83 @@ const App = () => {
     };
 
 
+    // ⭐️ [마이그레이션] 일회성 데이터 변환 함수 (기존 유지)
+    const handleMigration = async () => {
+        if (!window.confirm("기존 'sharedData'의 모든 데이터를 새 'reports' 구조로 변환합니다. 이 작업은 한 번만 실행해야 합니다. 계속하시겠습니까?")) {
+            return;
+        }
+        
+        setIsMigrating(true);
+        setErrorMessage("기존 데이터 변환 중... (페이지를 닫지 마세요)");
+
+        try {
+            const oldDocRef = doc(db, 'academyReports', 'sharedData');
+            const docSnap = await getDoc(oldDocRef);
+
+            if (!docSnap.exists()) {
+                throw new Error("'academyReports/sharedData' 문서를 찾을 수 없습니다. 변환할 데이터가 없습니다.");
+            }
+
+            const oldTestData = docSnap.data().testData;
+            if (!oldTestData || Object.keys(oldTestData).length === 0) {
+                 throw new Error("'sharedData'에 'testData'가 비어있습니다.");
+            }
+
+            console.log("기존 데이터 로드 완료. 변환 시작...");
+            
+            const batch = writeBatch(db);
+            const newSummaries = [];
+            let reportCount = 0;
+
+            for (const className in oldTestData) {
+                const datesData = oldTestData[className];
+                for (const date in datesData) {
+                    const reportData = datesData[date];
+                    
+                    const reportId = `${className}_${date}`; 
+                    const reportRef = doc(db, 'reports', reportId);
+
+                    const { studentData, ...commonData } = reportData;
+                    
+                    const commonDataToSave = {
+                        ...commonData,
+                        className: className,
+                        date: date,
+                        studentCount: studentData.studentCount,
+                        classAverage: studentData.classAverage,
+                        questionCount: studentData.questionCount,
+                        answerRates: studentData.answerRates,
+                    };
+                    batch.set(reportRef, commonDataToSave);
+
+                    studentData.students.forEach(student => {
+                        const studentRef = doc(db, 'reports', reportId, 'students', student.name);
+                        batch.set(studentRef, student);
+                    });
+                    
+                    newSummaries.push({ id: reportId, className, date, studentCount: studentData.studentCount });
+                    reportCount++;
+                }
+            }
+
+            if (reportCount > 0) {
+                await batch.commit();
+                console.log(`총 ${reportCount}개의 리포트 변환 완료.`);
+                setErrorMessage(`성공! ${reportCount}개의 리포트가 새 구조로 변환되었습니다.`);
+                setReportSummaries(newSummaries);
+            } else {
+                 setErrorMessage("변환할 리포트가 0개입니다.");
+            }
+
+        } catch (error) {
+            console.error("마이그레이션 실패:", error);
+            setErrorMessage("데이터 변환 중 심각한 오류 발생: " + error.message);
+        } finally {
+            setIsMigrating(false);
+        }
+    };
+
     // (renderNav, renderGlobalError 렌더링 로직은 변경 없음)
-    
     const renderNav = () => {
         if (!currentTeacher || currentPage === 'page1') return null;
         return (
@@ -601,21 +798,22 @@ const App = () => {
             );
         }
         
-        // ⭐️ [수정] 'renderPage' 스위치 (prop 전달 변경)
+        // ⭐️ [신규] 'renderPage' 스위치 (Page1에 props 전달)
         switch (currentPage) {
             case 'page1': 
                 return <Page1_Upload 
                             handleFileChange={handleFileChange}
-                            handleFileProcess={handleFileProcess}
+                            handleFileProcess={handleFileProcess} // ⭐️ App.jsx의 handleFileProcess 전달
                             fileInputRef={fileInputRef}
                             selectedFiles={selectedFiles} 
                             handleFileDrop={handleFileDrop}
+                            handleMigration={handleMigration} 
+                            isMigrating={isMigrating} 
                         />;
             case 'page2': 
                 return <Page2_ClassSelect 
                             handleDeleteClass={handleDeleteClass} 
                             selectedDate={selectedDate}
-                            // ⭐️ [신규] 리포트 로딩 함수 전달
                             handleSelectReport={loadAndShowReport}
                         />;
             case 'page3': 
@@ -627,24 +825,25 @@ const App = () => {
                             handleDeleteStudent={handleDeleteStudent} 
                             selectedClass={selectedClass}         
                             selectedDate={selectedDate}
-                            // ⭐️ [신규] 리포트 로딩 함수 전달
                             handleSelectReport={loadAndShowReport}
                         />;
             case 'page5': return <Page5_ReportDisplay />;
             default:
                 return <Page1_Upload 
                             handleFileChange={handleFileChange}
-                            handleFileProcess={handleFileProcess}
+                            handleFileProcess={handleFileProcess} // ⭐️ App.jsx의 handleFileProcess 전달
                             fileInputRef={fileInputRef}
                             selectedFiles={selectedFiles} 
                             handleFileDrop={handleFileDrop}
+                            handleMigration={handleMigration} 
+                            isMigrating={isMigrating} 
                         />;
         }
     };
 
     const renderGlobalError = () => {
         if (!errorMessage || currentPage === 'page1') return null; 
-        return ( <div id="global-error-message" /* ... (내용 동일) ... */ > </div> );
+        return ( <div id="global-error-message" /* ... */ > </div> );
     };
 
     return (
