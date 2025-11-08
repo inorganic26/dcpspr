@@ -2,12 +2,15 @@
 
 import { useEffect, useCallback, useRef } from 'react';
 import { useReportContext } from '../context/ReportContext';
+// ⭐️ [수정] renderScoreChart 함수가 animation 옵션을 받도록 수정 (reportUtils.js도 수정 필요)
 import { renderScoreChart, renderCumulativeScoreChart } from '../lib/reportUtils.js';
 import html2canvas from 'html2canvas'; 
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import Chart from 'chart.js/auto';
 
+// (이 파일의 1~310라인까지의 폰트 로드 및 PDF 헬퍼 함수들은 동일합니다)
+// ... (getFontBase64, initializePdf, addPdfTitle, addPdfSectionTitle, addWrappedText, addFeaturesSection, addAiAnalysisSection, getDifficulty 함수는 동일) ...
 // ⭐️ 2. 폰트 데이터를 저장할 변수 (앱 실행 중 한 번만 로드)
 let notoBase64 = null;
 
@@ -122,7 +125,6 @@ function addWrappedText(pdf, text, yPos, options = {}) {
 
 /**
  * ⭐️ [수정] 3개의 박스로 구성된 '주요 특징' 섹션을 그립니다. (여백 버그 수정)
- * @returns {number} 다음 컨텐츠가 시작될 Y축 위치
  */
 function addFeaturesSection(pdf, data, yPos) {
     if (!data || !data.students) { 
@@ -153,16 +155,14 @@ function addFeaturesSection(pdf, data, yPos) {
     const minBoxHeight = 25; // 최소 높이
     const maxBoxHeight = 55; // ⭐️ 최대 높이 55mm (5.5cm)로 설정
     
-    // ⭐️ [신규] 'addAiAnalysisSection'과 동일한 패딩 값 사용
     const topPadding = 6;
     const textPadding = 2;
     const bottomPadding = 6;
     
     pdf.setFont('NotoSansKR', 'normal'); 
     
-    // ⭐️ [신규] 타이틀 높이 계산 (11pt)
     pdf.setFontSize(11);
-    const titleHeight = pdf.getTextDimensions('M').h; // 11pt 폰트의 대략적인 높이
+    const titleHeight = pdf.getTextDimensions('M').h; 
 
     const calcTextHeight = (text, fontSize, lineSpacing, maxWidth) => {
         pdf.setFontSize(fontSize);
@@ -195,42 +195,42 @@ function addFeaturesSection(pdf, data, yPos) {
     pdf.setLineWidth(0.5);
 
     // ⭐️ [신규] 텍스트 시작 Y 좌표 계산
-    const titleStartY = yPos + topPadding + (11 * 0.352778); // 11pt 폰트 높이 보정
-    const textStartY = yPos + topPadding + titleHeight + textPadding + (10 * 0.352778); // 10pt 폰트 높이 보정
-    const errorTextStartY = yPos + topPadding + titleHeight + textPadding + (9 * 0.352778); // 9pt 폰트 높이 보정
+    const titleStartY = yPos + topPadding + (11 * 0.352778); 
+    const textStartY = yPos + topPadding + titleHeight + textPadding + (10 * 0.352778); 
+    const errorTextStartY = yPos + topPadding + titleHeight + textPadding + (9 * 0.352778); 
 
 
     // 1. 점수 분포 (파란색)
-    pdf.setFillColor(239, 246, 255); // bg-indigo-50
-    pdf.setDrawColor(224, 231, 255); // border-indigo-200
-    pdf.rect(startX, yPos, boxWidth, boxHeight, 'FD'); // ⭐️ 수정된 boxHeight 적용
+    pdf.setFillColor(239, 246, 255); 
+    pdf.setDrawColor(224, 231, 255); 
+    pdf.rect(startX, yPos, boxWidth, boxHeight, 'FD'); 
     pdf.setFontSize(11);
-    pdf.setTextColor(49, 46, 129); // text-indigo-800
-    pdf.text('📈 점수 분포', startX + 5, titleStartY); // ⭐️ yPos + 8 -> titleStartY
+    pdf.setTextColor(49, 46, 129); 
+    pdf.text('📈 점수 분포', startX + 5, titleStartY); 
     pdf.setFontSize(10);
-    pdf.setTextColor(67, 56, 202); // text-indigo-700
-    addWrappedText(pdf, scoreText, textStartY, { x: startX + 5, maxWidth: boxWidth - 10, fontSize: 10, color: [67, 56, 202] }); // ⭐️ yPos + 16 -> textStartY
+    pdf.setTextColor(67, 56, 202); 
+    addWrappedText(pdf, scoreText, textStartY, { x: startX + 5, maxWidth: boxWidth - 10, fontSize: 10, color: [67, 56, 202] }); 
 
     // 2. 전원 정답 문항 (녹색)
-    pdf.setFillColor(240, 253, 244); // bg-green-50
-    pdf.setDrawColor(220, 252, 231); // border-green-200
-    pdf.rect(startX + boxWidth + boxMargin, yPos, boxWidth, boxHeight, 'FD'); // ⭐️ 수정된 boxHeight 적용
+    pdf.setFillColor(240, 253, 244); 
+    pdf.setDrawColor(220, 252, 231); 
+    pdf.rect(startX + boxWidth + boxMargin, yPos, boxWidth, boxHeight, 'FD'); 
     pdf.setFontSize(11);
-    pdf.setTextColor(22, 101, 52); // text-green-800
-    pdf.text('✅ 전원 정답 문항', startX + boxWidth + boxMargin + 5, titleStartY); // ⭐️ yPos + 8 -> titleStartY
+    pdf.setTextColor(22, 101, 52); 
+    pdf.text('✅ 전원 정답 문항', startX + boxWidth + boxMargin + 5, titleStartY); 
     pdf.setFontSize(10);
-    pdf.setTextColor(21, 128, 61); // text-green-700
-    addWrappedText(pdf, correctText, textStartY, { x: startX + boxWidth + boxMargin + 5, maxWidth: boxWidth - 10, fontSize: 10, color: [21, 128, 61] }); // ⭐️ yPos + 16 -> textStartY
+    pdf.setTextColor(21, 128, 61); 
+    addWrappedText(pdf, correctText, textStartY, { x: startX + boxWidth + boxMargin + 5, maxWidth: boxWidth - 10, fontSize: 10, color: [21, 128, 61] }); 
 
     // 3. 오답률 높은 문항 (붉은색)
-    pdf.setFillColor(254, 242, 242); // bg-red-50
-    pdf.setDrawColor(254, 226, 226); // border-red-200
-    pdf.rect(startX + (boxWidth + boxMargin) * 2, yPos, boxWidth, boxHeight, 'FD'); // ⭐️ 수정된 boxHeight 적용
+    pdf.setFillColor(254, 242, 242); 
+    pdf.setDrawColor(254, 226, 226); 
+    pdf.rect(startX + (boxWidth + boxMargin) * 2, yPos, boxWidth, boxHeight, 'FD'); 
     pdf.setFontSize(11);
-    pdf.setTextColor(153, 27, 27); // text-red-800
-    pdf.text('❌ 오답률 높은 문항 (40% 이하)', startX + (boxWidth + boxMargin) * 2 + 5, titleStartY); // ⭐️ yPos + 8 -> titleStartY
+    pdf.setTextColor(153, 27, 27); 
+    pdf.text('❌ 오답률 높은 문항 (40% 이하)', startX + (boxWidth + boxMargin) * 2 + 5, titleStartY); 
     pdf.setFontSize(9);
-    addWrappedText(pdf, errorText, errorTextStartY, { x: startX + (boxWidth + boxMargin) * 2 + 5, maxWidth: boxWidth - 10, fontSize: 9, color: [185, 28, 28] }); // ⭐️ yPos + 16 -> errorTextStartY
+    addWrappedText(pdf, errorText, errorTextStartY, { x: startX + (boxWidth + boxMargin) * 2 + 5, maxWidth: boxWidth - 10, fontSize: 9, color: [185, 28, 28] }); 
 
     return yPos + boxHeight + 10;
 }
@@ -360,10 +360,12 @@ export const useChartAndPDF = () => {
                 classAverage: data.classAverage,
             };
 
+            // ⭐️ [수정] 차트 렌더링 시 애니메이션 활성화 (기본값)
             chartInstanceRef.current = renderScoreChart(
                 canvas, 
                 studentDataForChart, 
-                currentStudentObj 
+                currentStudentObj,
+                true // ⭐️ animation: true
             );
             if (chartInstanceRef.current) {
                 setActiveChart(chartInstanceRef.current);
@@ -387,8 +389,10 @@ export const useChartAndPDF = () => {
         button.textContent = '저장 중...';
         button.disabled = true;
         
+        // [수정] '단일 시험' 차트 인스턴스만 가져옴
         let currentActiveChart = chartInstanceRef.current;
         
+        // ⭐️ [수정] 타이밍 문제 해결 (애니메이션 끄고 강제 렌더링)
         if (!currentActiveChart) {
              const chartCanvas = document.getElementById('scoreChart');
              const data = currentReportData; 
@@ -406,17 +410,26 @@ export const useChartAndPDF = () => {
                      classAverage: data.classAverage,
                  };
 
+                 // ⭐️ [수정] 1. 애니메이션 없이 차트 생성
                  const newChart = renderScoreChart(
-                    canvas, 
+                    chartCanvas, 
                     studentDataForChart, 
-                    studentForChart
+                    studentForChart,
+                    false // ⭐️ animation: false
                  );
+                 
+                 // ⭐️ [수정] 2. 차트 그리기가 완료될 때까지 강제로 기다림
+                 if (newChart) {
+                    await newChart.draw(); // ⭐️ 중요: 그리기를 강제로 동기화
+                    console.log("강제 렌더링 완료.");
+                 }
                 
                  currentActiveChart = newChart; 
                  chartInstanceRef.current = newChart; 
                  setActiveChart(newChart); 
                 
-                 await new Promise(resolve => setTimeout(resolve, 300)); 
+                 // ⭐️ [수정] 3. 300ms '핵' 제거 (더 이상 필요 없음)
+                 // await new Promise(resolve => setTimeout(resolve, 300)); 
              }
         }
         
@@ -455,9 +468,11 @@ export const useChartAndPDF = () => {
 
             if (chartCanvas) {
                 try {
+                    // ⭐️ [수정] 캡처 시점에 currentActiveChart가 항상 존재하도록 보장됨
                     if (currentActiveChart && typeof currentActiveChart.toBase64Image === 'function') {
                         chartImgData = currentActiveChart.toBase64Image('image/png', 1.0);
                     } else {
+                        // ⭐️ [수정] fallback 로직은 'UNKNOWN' 오류의 주 원인이므로 제거하고, html2canvas를 우선 시도
                         console.warn("currentActiveChart(ref)가 없거나 비정상입니다. html2canvas fallback 실행");
                         chartImgData = await html2canvas(chartCanvas, { 
                             scale: 2, logging: false, useCORS: true, backgroundColor: null 
@@ -476,7 +491,7 @@ export const useChartAndPDF = () => {
                 
                 addPdfTitle(pdf, `${selectedDate} Weekly Test`, `${selectedClass} / ${student.name}`);
                 yPos = addPdfSectionTitle(pdf, '반 전체 주요 특징', 40);
-                yPos = addFeaturesSection(pdf, data, yPos); // ⭐️ 수정된 함수 호출
+                yPos = addFeaturesSection(pdf, data, yPos); 
 
                 const commentText = document.getElementById('instructorComment')?.value ?? '';
                 yPos = addPdfSectionTitle(pdf, '👨‍🏫 담당 강사 코멘트', yPos + 5);

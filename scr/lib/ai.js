@@ -72,12 +72,11 @@ function getDifficulty(qNum, selectedClass) {
     }
 }
 
-// ⭐️ [수정] 학생 개별 분석 (데이터 참조 변경)
+// (학생 개별 분석 - 변경 없음)
 export async function getAIAnalysis(student, data, selectedClass, questionUnitMap) {
     const incorrectAnswers = student.answers.filter(a => !a.isCorrect);
     if (incorrectAnswers.length === 0) {
         return Promise.resolve({
-            // ⭐️ [수정] data.studentData.classAverage -> data.classAverage
             "strengths": `총점 ${student.score}점으로, 모든 문제를 맞혔습니다. 이는 반 평균(${data.classAverage}점)보다 월등히 높은 점수이며, 시험 범위에 대한 개념을 완벽하게 숙지하고 있음을 보여줍니다. 특히 고난도 문항까지 실수 없이 해결한 점이 인상적입니다.`,
             "weaknesses": "특별한 약점이 발견되지 않았습니다. 현재의 학습 페이스를 유지하며 심화 문제에 도전하는 것을 추천합니다.",
             "recommendations": "지금처럼 꾸준히 학습하며, 다양한 유형의 심화 문제와 경시 대회 문제 등을 통해 문제 해결 능력을 더욱 향상시키는 것이 좋습니다. 또한, 새로운 개념을 학습할 때에도 현재와 같은 깊이 있는 탐구 자세를 유지하시기 바랍니다.",
@@ -99,7 +98,7 @@ export async function getAIAnalysis(student, data, selectedClass, questionUnitMa
 
         **학생 정보:**
         - 점수: ${student.score}점
-        - 반 평균 점수: ${data.classAverage}점 {/* ⭐️ [수정] data.studentData.classAverage -> data.classAverage */}
+        - 반 평균 점수: ${data.classAverage}점 
 
         **시험 문항별 개념 (미리 분석됨):**
         ${JSON.stringify(questionUnitMap, null, 2)}
@@ -126,10 +125,9 @@ export async function getAIAnalysis(student, data, selectedClass, questionUnitMa
     return callGeminiAPI(prompt);
 }
 
-// ⭐️ [수정] 반 전체 분석 (데이터 참조 변경)
+// (반 전체 분석 - 변경 없음)
 export async function getOverallAIAnalysis(data) {
     const highErrorRateQuestions = [];
-    // ⭐️ [수정] data.studentData.answerRates -> data.answerRates
     data.answerRates.forEach((rate, i) => {
         if (rate <= 40) { 
             highErrorRateQuestions.push({ qNum: i + 1, rate: 100 - rate });
@@ -150,8 +148,8 @@ export async function getOverallAIAnalysis(data) {
         당신은 데이터 기반 교육 컨설턴트입니다. 다음은 한 학급의 수학 시험 결과 데이터와 시험지 텍스트입니다. 이 데이터를 바탕으로 반 전체의 학습 상황을 분석하고, 교사를 위한 구체적인 피드백을 제공해주세요. 모든 내용은 한국어로, 전문적이고 명료한 톤으로 작성해주세요.
 
         **반 전체 데이터:**
-        - 반 평균 점수: ${data.classAverage}점 {/* ⭐️ [수정] data.studentData.classAverage -> data.classAverage */}
-        - 총 문항 수: ${data.questionCount}개 {/* ⭐️ [수정] data.studentData.questionCount -> data.questionCount */}
+        - 반 평균 점수: ${data.classAverage}점 
+        - 총 문항 수: ${data.questionCount}개 
         
         **시험지 전체 텍스트 (PDF 내용):**
         ${data.pdfInfo.fullText.substring(0, 8000)}
@@ -178,23 +176,40 @@ export async function getOverallAIAnalysis(data) {
     return callGeminiAPI(prompt);
 }
 
-// ⭐️ [수정] 단원 매핑 (데이터 참조 변경)
+// ⭐️ [수정] 단원 매핑 (프롬프트 수정)
 export async function getQuestionUnitMapping(data) {
+    // ⭐️ [수정] 프롬프트 내용을 RPM 유형명 스타일로 변경
     const prompt = `
-        다음은 시험지 전체 텍스트입니다. 1번부터 ${data.questionCount}번까지 각 문항이 다루는 가장 **세부적이고 정확한 핵심 수학 개념**을 시험지 텍스트(문제 내용, 표지의 단원 정보 등)를 분석하여 찾아주세요. {/* ⭐️ [수정] data.studentData.questionCount -> data.questionCount */}
+        다음은 시험지 전체 텍스트입니다. 1번부터 ${data.questionCount}번까지 각 문항이 다루는 **가장 세부적인 '문제 유형명'**을 분석하여 찾아주세요.
 
         **시험지 전체 텍스트 (PDF 내용):**
         ${data.pdfInfo.fullText.substring(0, 15000)}
 
         **분석 요청:**
-        각 문항에 대해, 시험지 내용을 면밀히 분석하여 가장 **세부적이고 정확한 핵심 수학 개념**을 JSON 형식으로 반환해주세요. (예: '두 점 사이의 거리', '선분의 내분점', '유리함수의 평행이동', '집합의 뜻과 표현')
+        각 문항에 대해, RPM 수학 교재의 유형명처럼 **매우 세부적인 '유형명'**을 JSON 형식으로 반환해주세요.
+        
+        [매우 중요]
+        - 단순한 단원명('삼각비', '원의 방정식')을 절대 반환하지 마세요.
+        - 실제 문제집의 유형명처럼 상세해야 합니다.
+        
+        [좋은 예시]
+        - "유형 01: 두 점 사이의 거리"
+        - "유형 05: 선분의 길이의 제곱의 합의 최솟값"
+        - "유형 08: x, y축에 동시에 접하는 원의 방정식"
+        - "유형 11: 삼각비의 값을 이용한 식의 계산"
+        - "유형 15: 표준편차와 분산의 관계"
+
+        [나쁜 예시]
+        - "삼각비"
+        - "산포도"
+        - "원의 방정식"
 
         **결과는 반드시 다음 JSON 형식으로만 반환해주세요. 설명이나 다른 텍스트는 포함하지 마세요:**
         {
             "question_units": [
-                { "qNum": 1, "unit": "집합의 뜻과 표현" },
-                { "qNum": 2, "unit": "실수의 분류" },
-                { "qNum": ${data.questionCount}, "unit": "..." } {/* ⭐️ [수정] data.studentData.questionCount -> data.questionCount */}
+                { "qNum": 1, "unit": "유형 01: 집합의 뜻과 표현" },
+                { "qNum": 2, "unit": "유형 03: 두 점 사이의 거리" },
+                { "qNum": ${data.questionCount}, "unit": "..." }
             ]
         }
     `; 
