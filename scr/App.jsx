@@ -1,15 +1,17 @@
 // scr/App.jsx
 
+// ⭐️ [수정] useState, useCallback 추가
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useReportContext } from './context/ReportContext';
 import { 
     loginTeacher, registerTeacher, 
     loadReportSummaries, loadReportDetails, 
-    deleteReport, deleteStudentFromReport 
+    deleteReport, deleteStudentFromReport,
+    addStudentToReport // ⭐️ [신규]
 } from './hooks/useFirebase';
-// ⭐️ [마이그레이션] Firestore 핵심 기능 직접 임포트
+// ⭐️ [수정] Firestore 임포트는 useFirebase.js가 담당 (기존 코드 유지)
 import { doc, getDoc, writeBatch } from 'firebase/firestore';
-import { db } from './lib/firebaseConfig'; // ⭐️ [마이그레이션] db 임포트
+import { db } from './lib/firebaseConfig'; 
 
 import { useFileProcessor } from './hooks/useFileProcessor';
 import { useReportGenerator } from './hooks/useReportGenerator';
@@ -20,24 +22,23 @@ import { useReportNavigation } from './hooks/useReportNavigation';
 import { signInAnonymously } from 'firebase/auth';
 import { auth } from './lib/firebaseConfig'; 
 
+// ⭐️ [수정] PlusCircle 아이콘 추가
 import { Home, ArrowLeft, UploadCloud, FileText, Loader, TriangleAlert, Save, PlusCircle, CalendarDays, LogOut, User, Trash2 } from 'lucide-react';
 
-// ... (Page1_Upload 컴포넌트 대폭 수정) ...
+// ... (Page1_Upload 컴포넌트는 원본 파일과 동일하게 유지) ...
 const Page1_Upload = ({ handleFileChange, handleFileProcess, fileInputRef, selectedFiles, handleFileDrop, handleMigration, isMigrating }) => { 
+    // ... (이 컴포넌트의 모든 코드는 원본과 동일) ...
+    // ... (이 컴포넌트의 모든 코드는 원본과 동일) ...
     const { 
         processing, errorMessage, uploadDate, setUploadDate, showPage, 
         reportSummaries, setSelectedDate, setErrorMessage 
     } = useReportContext();
     const [isDragging, setIsDragging] = useState(false); 
-    
-    // --- ⭐️ [신규] '직접 입력'을 위한 상태 ---
-    const [inputType, setInputType] = useState('file'); // 'file' or 'direct'
+    const [inputType, setInputType] = useState('file'); 
     const [directClassName, setDirectClassName] = useState('');
     const [directQuestionCount, setDirectQuestionCount] = useState(20);
     const [directStudents, setDirectStudents] = useState([]);
     const [directForm, setDirectForm] = useState({ name: '', score: '', answers: '' });
-    // ---
-
     const handleDragOver = (e) => { e.preventDefault(); e.stopPropagation(); if (!isDragging) setIsDragging(true); };
     const handleDragLeave = (e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); };
     const handleDrop = (e) => {
@@ -74,68 +75,51 @@ const Page1_Upload = ({ handleFileChange, handleFileProcess, fileInputRef, selec
             setErrorMessage(`'${uploadDate}'에 해당하는 분석된 리포트가 없습니다. \n다른 날짜를 선택하거나 '모든 날짜 보기'를 클릭하세요.`); 
         }
     };
-    
-    // --- ⭐️ [신규] '직접 입력' 학생 추가 핸들러 ---
     const handleAddStudent = (e) => {
         e.preventDefault();
         setErrorMessage('');
-        
         const { name, score, answers } = directForm;
         const qCount = parseInt(directQuestionCount);
-
         if (!name || !score || !answers || qCount <= 0) {
             setErrorMessage('이름, 총점, 총 문항 수, 정답을 모두 입력해야 합니다.');
             return;
         }
-
-        const answerArray = answers.trim().toUpperCase().split(/[\s,]+/); // 쉼표 또는 공백으로 분리
-
+        const answerArray = answers.trim().toUpperCase().split(/[\s,]+/); 
         if (answerArray.length !== qCount) {
             setErrorMessage(`정답 개수(${answerArray.length}개)가 총 문항 수(${qCount}개)와 일치하지 않습니다.`);
             return;
         }
-
-        // 'fileParser.js'가 이해하는 형식으로 객체 생성
         const newStudent = {
             "이름": name,
             "총점": parseFloat(score),
         };
-        
         answerArray.forEach((ans, index) => {
-            newStudent[index + 1] = ans; // "1": "O", "2": "X"
+            newStudent[index + 1] = ans; 
         });
-
         setDirectStudents(prev => [...prev, newStudent]);
-        setDirectForm({ name: '', score: '', answers: '' }); // 폼 초기화
+        setDirectForm({ name: '', score: '', answers: '' }); 
     };
-
-    // --- ⭐️ [신규] '직접 입력' 학생 삭제 핸들러 ---
     const handleRemoveStudent = (indexToRemove) => {
         setDirectStudents(prev => prev.filter((_, index) => index !== indexToRemove));
     };
-
-    // --- ⭐️ [신규] '분석 시작하기' 버튼 클릭 핸들러 ---
     const onProcessStart = () => {
-        // 'handleFileProcess'에 현재 입력 모드와 직접 입력 데이터를 전달
         handleFileProcess(inputType, {
             className: directClassName,
             students: directStudents,
         });
     };
-
+    
     return (
         <div id="fileUploadCard" className="card">
+            {/* ... (Page1의 모든 JSX는 원본과 동일) ... */}
             <h2 className="text-2xl font-bold text-center mb-6 text-gray-700">AI 성적 리포트 분석기</h2>
             <div className="mb-4">
                 <label htmlFor="dateInput" className="block text-sm font-medium text-gray-700 mb-1">시험 날짜 (필수)</label>
                 <div className="relative"><input type="date" id="dateInput" className="w-full px-4 py-2 border border-gray-300 rounded-lg" value={isoDate} onChange={handleDateChange} /></div>
             </div>
-
             <p className="text-center text-gray-600 mb-6">
                 분석할 **PDF 시험지 파일**을 업로드하고, 성적표 입력 방식을 선택해주세요.
             </p>
-
-            {/* --- ⭐️ [신규] PDF 업로드 (항상 필수) --- */}
             <div className={`p-6 border-2 border-dashed rounded-xl transition-colors mb-4 ${ isDragging ? 'border-indigo-500 bg-indigo-50' : 'border-gray-300 hover:border-gray-400' }`} onDragOver={handleDragOver} onDragEnter={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
                 <div className="flex flex-col items-center justify-center space-y-3">
                     <UploadCloud size={30} className={`text-gray-400 transition-colors ${isDragging ? 'text-indigo-600' : ''}`} />
@@ -144,12 +128,10 @@ const Page1_Upload = ({ handleFileChange, handleFileProcess, fileInputRef, selec
                         <span>{selectedFiles.some(f => f.name.endsWith('.pdf')) ? 'PDF 파일 선택됨' : 'PDF 파일 선택하기'}</span>
                     </label>
                     <input type="file" id="fileInput" ref={fileInputRef} className="hidden" multiple 
-                           accept=".pdf,.csv,.xlsx" // ⭐️ '파일' 모드를 위해 accept는 유지
+                           accept=".pdf,.csv,.xlsx" 
                            onChange={handleFileChange} />
                 </div>
             </div>
-            
-            {/* --- ⭐️ [신규] 입력 방식 선택 UI --- */}
             <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-2">성적표 입력 방식 (필수)</label>
                 <div className="flex justify-center gap-4">
@@ -163,8 +145,6 @@ const Page1_Upload = ({ handleFileChange, handleFileProcess, fileInputRef, selec
                     </label>
                 </div>
             </div>
-            
-            {/* --- ⭐️ [수정] '파일 업로드' 모드 UI --- */}
             {inputType === 'file' && (
                 <div className="mb-4">
                     <p className="text-center text-gray-600 mb-4">
@@ -180,8 +160,6 @@ const Page1_Upload = ({ handleFileChange, handleFileProcess, fileInputRef, selec
                     )}
                 </div>
             )}
-            
-            {/* --- ⭐️ [신규] '직접 입력' 모드 UI --- */}
             {inputType === 'direct' && (
                 <div className="mb-4 p-4 border rounded-lg bg-gray-50 space-y-4">
                     <div className="grid grid-cols-2 gap-4">
@@ -196,7 +174,6 @@ const Page1_Upload = ({ handleFileChange, handleFileProcess, fileInputRef, selec
                                    value={directQuestionCount} onChange={(e) => setDirectQuestionCount(parseInt(e.target.value))} min="1"/>
                         </div>
                     </div>
-                    
                     <form onSubmit={handleAddStudent} className="space-y-3 p-3 border-t">
                         <h4 className="font-semibold text-gray-700">학생 추가</h4>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -209,7 +186,6 @@ const Page1_Upload = ({ handleFileChange, handleFileProcess, fileInputRef, selec
                         </div>
                         <button type="submit" className="btn btn-secondary btn-sm w-full">학생 추가</button>
                     </form>
-                    
                     {directStudents.length > 0 && (
                         <div className="overflow-x-auto max-h-48 border-t pt-2">
                              <table className="table table-zebra table-xs w-full">
@@ -242,23 +218,17 @@ const Page1_Upload = ({ handleFileChange, handleFileProcess, fileInputRef, selec
                     )}
                 </div>
             )}
-
-
             {errorMessage && ( <div id="error-message" className="text-red-600 bg-red-100 p-3 rounded-lg mb-4 text-sm" dangerouslySetInnerHTML={{ __html: errorMessage.replace(/\n/g, '<br>') }} /> )}
-            
-            {/* ⭐️ [수정] '분석 시작하기' 버튼 로직 변경 */}
             <button id="processBtn" className="btn btn-primary w-full text-lg" 
                     disabled={processing || isMigrating}
                     onClick={onProcessStart}>
                 {processing && <span id="loader" className="spinner" style={{ borderColor: 'white', borderBottomColor: 'transparent', width: '20px', height: '20px', marginRight: '8px' }}></span>}
                 <span>{processing ? '분석 중...' : '분석 시작하기'}</span>
             </button>
-            
             <div className="grid grid-cols-2 gap-4 mt-4">
                 <button className="btn btn-primary w-full text-md" onClick={handleViewExistingByDate} disabled={processing || isMigrating}><CalendarDays size={18} className="mr-2" /> 선택 날짜 조회</button>
                 <button className="btn btn-secondary w-full text-md" onClick={() => { setErrorMessage(''); showPage('page3'); }} disabled={processing || isMigrating}>모든 날짜 보기</button>
             </div>
-            
             <div className="mt-4 border-t pt-4">
                 <button 
                     className="btn btn-accent w-full text-md" 
@@ -276,8 +246,9 @@ const Page1_Upload = ({ handleFileChange, handleFileProcess, fileInputRef, selec
     );
 };
 
-// ... (Page2_ClassSelect, Page3_DateSelect, Page4_ReportSelect, Page5_ReportDisplay, LoginPage 컴포넌트는 이전 답변과 동일) ...
+// ... (Page2_ClassSelect 컴포넌트는 원본 파일과 동일하게 유지) ...
 const Page2_ClassSelect = ({ handleDeleteClass, selectedDate, handleSelectReport }) => { 
+    // ... (이 컴포넌트의 모든 코드는 원본과 동일) ...
     const { reportSummaries, setSelectedClass, showPage, setSelectedReportId } = useReportContext();
     const classesForDate = reportSummaries
         .filter(r => r.date === selectedDate)
@@ -324,7 +295,10 @@ const Page2_ClassSelect = ({ handleDeleteClass, selectedDate, handleSelectReport
         </div>
     );
 };
+
+// ... (Page3_DateSelect 컴포넌트는 원본 파일과 동일하게 유지) ...
 const Page3_DateSelect = ({ handleDeleteDate }) => { 
+    // ... (이 컴포넌트의 모든 코드는 원본과 동일) ...
     const { reportSummaries, setSelectedDate, showPage } = useReportContext();
     const allDates = new Set(reportSummaries.map(r => r.date));
     const uniqueDates = Array.from(allDates);
@@ -364,10 +338,45 @@ const Page3_DateSelect = ({ handleDeleteDate }) => {
         </div>
     );
 };
-const Page4_ReportSelect = ({ handleDeleteStudent, selectedClass, selectedDate, handleSelectReport }) => { 
-    const { currentReportData, selectedStudent, setSelectedStudent, showPage, selectedReportId } = useReportContext();
+
+// --- ⭐️ [수정] Page4_ReportSelect 컴포넌트 ---
+const Page4_ReportSelect = ({ 
+    handleDeleteStudent, 
+    handleAddStudent, // ⭐️ [신규] prop
+    selectedClass, 
+    selectedDate, 
+    handleSelectReport 
+}) => { 
+    const { 
+        currentReportData, selectedStudent, setSelectedStudent, 
+        showPage, selectedReportId, setErrorMessage // ⭐️ [신규] setErrorMessage
+    } = useReportContext();
+    
     const students = currentReportData?.students || [];
     
+    // ⭐️ [신규] 학생 추가 모달 상태
+    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [addForm, setAddForm] = useState({ name: '', score: '', answers: '' });
+    const [addError, setAddError] = useState('');
+
+    const handleFormSubmit = (e) => {
+        e.preventDefault();
+        setAddError('');
+        setErrorMessage(''); // ⭐️ 글로벌 오류 초기화
+
+        // ⭐️ App.jsx의 핸들러 호출
+        handleAddStudent(addForm)
+            .then(() => {
+                // 성공 시
+                setIsAddModalOpen(false);
+                setAddForm({ name: '', score: '', answers: '' });
+            })
+            .catch((error) => {
+                // 실패 시 (App.jsx가 던진 오류)
+                setAddError(error.message);
+            });
+    };
+
     return (
         <div className="card">
             <h2 className="text-2xl font-bold text-center mb-6">리포트 선택</h2>
@@ -384,6 +393,18 @@ const Page4_ReportSelect = ({ handleDeleteStudent, selectedClass, selectedDate, 
                     반 전체
                 </button>
                 
+                {/* ⭐️ [신규] 학생 추가 버튼 */}
+                <button 
+                    className="btn btn-secondary w-full text-indigo-600 border-indigo-300 hover:bg-indigo-50"
+                    onClick={() => {
+                        setIsAddModalOpen(true);
+                        setAddError('');
+                    }}
+                >
+                    <PlusCircle size={18} className="mr-2" />
+                    학생 추가하기
+                </button>
+
                 {students.map(student => (
                     <div key={student.name} className="relative flex"> 
                         <button 
@@ -408,10 +429,65 @@ const Page4_ReportSelect = ({ handleDeleteStudent, selectedClass, selectedDate, 
                     </div>
                 ))}
             </div>
+
+            {/* ⭐️ [신규] 학생 추가 모달 */}
+            {isAddModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4">
+                    <div className="card bg-white p-6 rounded-lg shadow-xl w-full max-w-lg">
+                        <h3 className="text-xl font-bold mb-4">학생 추가</h3>
+                        <p className="text-sm text-gray-600 mb-4">
+                            추가할 학생의 이름, 총점, 정답을 입력하세요. (총 문항 수: {currentReportData?.questionCount}개)
+                        </p>
+                        <form onSubmit={handleFormSubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">학생 이름</label>
+                                <input 
+                                    type="text" placeholder="학생 이름" className="w-full px-4 py-2 border rounded-lg"
+                                    value={addForm.name} onChange={(e) => setAddForm(f => ({...f, name: e.target.value}))}
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">총점</label>
+                                <input 
+                                    type="number" placeholder="총점" className="w-full px-4 py-2 border rounded-lg"
+                                    value={addForm.score} onChange={(e) => setAddForm(f => ({...f, score: e.target.value}))}
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">정답 ({currentReportData?.questionCount}개)</label>
+                                <textarea
+                                    placeholder={`쉼표(,) 또는 공백으로 구분된 정답 ${currentReportData?.questionCount}개 (예: O,X,O,X...)`}
+                                    className="w-full px-4 py-2 border rounded-lg h-24"
+                                    value={addForm.answers} onChange={(e) => setAddForm(f => ({...f, answers: e.target.value}))}
+                                    required
+                                />
+                            </div>
+                            
+                            {addError && ( <div className="text-red-600 bg-red-100 p-3 rounded-lg text-sm">{addError}</div> )}
+                            
+                            <div className="flex justify-end gap-4">
+                                <button type="button" className="btn btn-secondary" onClick={() => setIsAddModalOpen(false)}>
+                                    취소
+                                </button>
+                                <button type="submit" className="btn btn-primary">
+                                    추가하기
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
+// --- ⭐️ [수정] Page4 끝 ---
+
+
+// ... (Page5_ReportDisplay 컴포넌트는 원본 파일과 동일하게 유지) ...
 const Page5_ReportDisplay = () => { 
+    // ... (이 컴포넌트의 모든 코드는 원본과 동일) ...
     const { reportHTML } = useReportContext();
     const reportContentRef = usePagination(); 
     return (
@@ -425,7 +501,10 @@ const Page5_ReportDisplay = () => {
         </div>
     );
 };
+
+// ... (LoginPage 컴포넌트는 원본 파일과 동일하게 유지) ...
 const LoginPage = ({ onLogin, onRegister, loginError, isLoggingIn, setLoginError }) => {
+    // ... (이 컴포넌트의 모든 코드는 원본과 동일) ...
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
     const [isRegisterMode, setIsRegisterMode] = useState(false);
@@ -485,30 +564,32 @@ const App = () => {
         currentTeacher, setCurrentTeacher,
         
         reportSummaries, setReportSummaries,
+        currentReportData, // ⭐️ [신규] currentReportData 추가
         setCurrentReportData,
         selectedReportId, setSelectedReportId,
         
         showPage, resetSelections
     } = useReportContext();
     
+    // ... (기존 App 컴포넌트의 상태값들: isAuthenticating 등) ...
     const [isAuthenticating, setIsAuthenticating] = useState(true); 
     const [isLoggingIn, setIsLoggingIn] = useState(false);
     const [loginError, setLoginError] = useState('');
     const [isMigrating, setIsMigrating] = useState(false);
 
-    // ⭐️ [수정] 'handleFileProcess'가 App.jsx에서 인자를 받도록 수정
     const { fileInputRef, selectedFiles, handleFileChange, handleFileProcess, handleFileDrop } = useFileProcessor();
     const { goBack, goHome } = useReportNavigation();
     
     useReportGenerator(); 
     const { handlePdfSave } = useChartAndPDF(); 
     
-    // (네트워크 모니터링, 익명 인증 useEffect는 변경 없음)
+    // ... (기존 useEffect들: 네트워크, 익명 인증) ...
     useEffect(() => {
-        // ...
+        // (네트워크 모니터링)
     }, [setErrorMessage]); 
 
     useEffect(() => {
+        // (익명 인증)
         const authenticate = async () => {
             try {
                 if (!auth.currentUser) { 
@@ -523,8 +604,8 @@ const App = () => {
         authenticate();
     }, []); 
 
-    // (handleLogin, handleRegister 핸들러는 변경 없음)
-    const handleLogin = async (name, phone) => {
+    // ... (기존 핸들러: handleLogin, handleRegister, performSuccessfulLogin, handleLogout) ...
+    const handleLogin = async (name, phone) => { /* ... (원본과 동일) ... */ 
         setIsLoggingIn(true);
         setLoginError('');
         try {
@@ -540,7 +621,7 @@ const App = () => {
             setIsLoggingIn(false);
         }
     };
-    const handleRegister = async (name, phone) => {
+    const handleRegister = async (name, phone) => { /* ... (원본과 동일) ... */ 
         setIsLoggingIn(true);
         setLoginError('');
         try {
@@ -552,9 +633,7 @@ const App = () => {
             setIsLoggingIn(false);
         }
     };
-    
-    // (performSuccessfulLogin 핸들러는 변경 없음)
-    const performSuccessfulLogin = async (teacher) => {
+    const performSuccessfulLogin = async (teacher) => { /* ... (원본과 동일) ... */ 
         setCurrentTeacher(teacher); 
         setInitialLoading(true); 
         
@@ -570,8 +649,7 @@ const App = () => {
             setIsLoggingIn(false);
         }
     };
-
-    const handleLogout = () => {
+    const handleLogout = () => { /* ... (원본과 동일) ... */ 
         setCurrentTeacher(null);
         setReportSummaries([]); 
         resetSelections(); 
@@ -579,8 +657,8 @@ const App = () => {
         setErrorMessage('');
     };
     
-    // (loadAndShowReport 핸들러는 변경 없음)
-    const loadAndShowReport = useCallback(async (reportId, pageToShow) => {
+    // ... (기존 핸들러: loadAndShowReport) ...
+    const loadAndShowReport = useCallback(async (reportId, pageToShow) => { /* ... (원본과 동일) ... */ 
         if (!reportId) return;
         setInitialLoading(true);
         try {
@@ -596,8 +674,8 @@ const App = () => {
     }, [setCurrentReportData, setInitialLoading, setErrorMessage, showPage]);
 
     
-    // (handleDeleteDate, handleDeleteClass 핸들러는 변경 없음)
-    const handleDeleteDate = async (dateToDelete) => {
+    // ... (기존 핸들러: handleDeleteDate, handleDeleteClass) ...
+    const handleDeleteDate = async (dateToDelete) => { /* ... (원본과 동일) ... */ 
         if (!window.confirm(`'${dateToDelete}'의 모든 분석 데이터를 정말 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`)) {
             return;
         }
@@ -615,7 +693,7 @@ const App = () => {
             setInitialLoading(false); 
         }
     };
-    const handleDeleteClass = async (reportId, className, date) => {
+    const handleDeleteClass = async (reportId, className, date) => { /* ... (원본과 동일) ... */ 
         if (!window.confirm(`'${date}'의 '${className}'반 데이터를 정말 삭제하시겠습니까?`)) {
             return;
         }
@@ -630,7 +708,7 @@ const App = () => {
         }
     };
 
-    // ⭐️ [수정] 'handleDeleteStudent' (통계 재계산 적용)
+    // ⭐️ [수정] handleDeleteStudent (원본 유지, 통계 재계산 부분 확인)
     const handleDeleteStudent = async (studentName, className, date) => {
         if (!window.confirm(`'${date}' - '${className}'반의 '${studentName}' 학생 데이터를 정말 삭제하시겠습니까?`)) {
             return;
@@ -642,10 +720,10 @@ const App = () => {
         
         setInitialLoading(true); 
         try {
-            // ⭐️ [수정] 'deleteStudentFromReport'는 이제 'newStats'를 반환
+            // ⭐️ 'deleteStudentFromReport'가 갱신된 'newStats'를 반환한다고 가정
             const newStats = await deleteStudentFromReport(selectedReportId, studentName);
             
-            // ⭐️ [수정] 로컬 'currentReportData' 상태 업데이트 (학생 제거 + 통계 갱신)
+            // ⭐️ 로컬 'currentReportData' 상태 업데이트
             setCurrentReportData(prev => ({
                 ...prev,
                 students: prev.students.filter(s => s.name !== studentName),
@@ -653,6 +731,13 @@ const App = () => {
                 classAverage: newStats.classAverage,
                 answerRates: newStats.answerRates
             }));
+
+            // ⭐️ reportSummaries의 studentCount도 갱신
+            setReportSummaries(prev => prev.map(summary =>
+                summary.id === selectedReportId
+                    ? { ...summary, studentCount: newStats.studentCount }
+                    : summary
+            ));
             
         } catch (error) {
             setErrorMessage("학생 데이터 삭제 중 오류: " + error.message);
@@ -662,8 +747,97 @@ const App = () => {
     };
 
 
-    // ⭐️ [마이그레이션] 일회성 데이터 변환 함수 (기존 유지)
-    const handleMigration = async () => {
+    /**
+     * ⭐️ [신규] 학생 추가 핸들러 (Page4에서 호출됨)
+     */
+    const handleAddStudent = async (formData) => {
+        setErrorMessage('');
+        
+        if (!currentReportData || !selectedReportId) {
+            throw new Error("리포트가 선택되지 않았습니다.");
+        }
+
+        const { name, score, answers } = formData;
+        const qCount = currentReportData.questionCount;
+
+        // 1. [검증] Page1의 '직접 입력' 로직과 유사
+        if (!name || !score || !answers || qCount <= 0) {
+            throw new Error("이름, 총점, 정답을 모두 입력해야 합니다.");
+        }
+        
+        // ⭐️ [중복 검증] 현재 로드된 데이터 기준
+        if (currentReportData.students.some(s => s.name === name.trim())) {
+             throw new Error(`'${name}' 학생은 이미 존재합니다.`);
+        }
+
+        const answerArray = answers.trim().toUpperCase().split(/[\s,]+/);
+
+        if (answerArray.length !== qCount) {
+            throw new Error(`정답 개수(${answerArray.length}개)가 총 문항 수(${qCount}개)와 일치하지 않습니다.`);
+        }
+
+        // 2. [생성] fileParser.js가 만드는 것과 동일한 형식의 객체 생성
+        const newStudent = {
+            id: `student-${Date.now()}`, // 임시 ID
+            name: name.trim(),
+            score: parseFloat(score),
+            answers: [], // qNum 기반으로 생성
+            correctCount: 0,
+            submitted: true,
+            aiAnalysis: null // ⭐️ On-Demand 분석을 위해 null로 설정
+        };
+        
+        for (let i = 0; i < qCount; i++) {
+            const qNum = i + 1;
+            const ansValue = answerArray[i];
+            // ⭐️ 정답 기준을 'O' 또는 1로 가정 (기존 로직과 일치시킴)
+            const isCorrect = ansValue === 'O' || ansValue === 1 || String(ansValue).toLowerCase() === 'o';
+            
+            newStudent.answers.push({
+                qNum: qNum,
+                answer: String(ansValue),
+                isCorrect: isCorrect
+            });
+            if (isCorrect) {
+                newStudent.correctCount++;
+            }
+        }
+
+        setInitialLoading(true);
+
+        try {
+            // 3. [호출] Firebase 훅 호출 (DB 작업)
+            const newStats = await addStudentToReport(selectedReportId, newStudent);
+
+            // 4. [상태 갱신] 로컬 React 상태(Context) 갱신
+            setCurrentReportData(prev => ({
+                ...prev,
+                students: [...prev.students, newStudent], // 새 학생 추가
+                // 갱신된 통계 적용
+                studentCount: newStats.studentCount,
+                classAverage: newStats.classAverage,
+                answerRates: newStats.answerRates
+            }));
+            
+            // ⭐️ reportSummaries의 studentCount도 갱신
+            setReportSummaries(prev => prev.map(summary =>
+                summary.id === selectedReportId
+                    ? { ...summary, studentCount: newStats.studentCount }
+                    : summary
+            ));
+
+        } catch (error) {
+            console.error("학생 추가 중 오류:", error);
+            // ⭐️ Page4의 모달이 이 오류를 잡을 수 있도록 다시 던짐
+            throw error; 
+        } finally {
+            setInitialLoading(false);
+        }
+    };
+
+
+    // ... (기존 핸들러: handleMigration) ...
+    const handleMigration = async () => { /* ... (원본과 동일) ... */ 
         if (!window.confirm("기존 'sharedData'의 모든 데이터를 새 'reports' 구조로 변환합니다. 이 작업은 한 번만 실행해야 합니다. 계속하시겠습니까?")) {
             return;
         }
@@ -738,8 +912,8 @@ const App = () => {
         }
     };
 
-    // (renderNav, renderGlobalError 렌더링 로직은 변경 없음)
-    const renderNav = () => {
+    // ... (기존 렌더링 함수: renderNav) ...
+    const renderNav = () => { /* ... (원본과 동일) ... */ 
         if (!currentTeacher || currentPage === 'page1') return null;
         return (
             <nav id="navigation" className="fixed top-0 left-0 right-0 bg-white shadow-md p-4 z-10 flex items-center h-16 print:hidden">
@@ -798,12 +972,11 @@ const App = () => {
             );
         }
         
-        // ⭐️ [신규] 'renderPage' 스위치 (Page1에 props 전달)
         switch (currentPage) {
             case 'page1': 
                 return <Page1_Upload 
                             handleFileChange={handleFileChange}
-                            handleFileProcess={handleFileProcess} // ⭐️ App.jsx의 handleFileProcess 전달
+                            handleFileProcess={handleFileProcess}
                             fileInputRef={fileInputRef}
                             selectedFiles={selectedFiles} 
                             handleFileDrop={handleFileDrop}
@@ -820,18 +993,23 @@ const App = () => {
                 return <Page3_DateSelect 
                             handleDeleteDate={handleDeleteDate} 
                         />;
+            
+            // --- ⭐️ [수정] Page4에 prop 전달 ---
             case 'page4': 
                 return <Page4_ReportSelect 
                             handleDeleteStudent={handleDeleteStudent} 
+                            handleAddStudent={handleAddStudent} // ⭐️ [신규]
                             selectedClass={selectedClass}         
                             selectedDate={selectedDate}
                             handleSelectReport={loadAndShowReport}
                         />;
+            // --- ⭐️ [수정] 끝 ---
+
             case 'page5': return <Page5_ReportDisplay />;
             default:
                 return <Page1_Upload 
                             handleFileChange={handleFileChange}
-                            handleFileProcess={handleFileProcess} // ⭐️ App.jsx의 handleFileProcess 전달
+                            handleFileProcess={handleFileProcess}
                             fileInputRef={fileInputRef}
                             selectedFiles={selectedFiles} 
                             handleFileDrop={handleFileDrop}
@@ -841,9 +1019,11 @@ const App = () => {
         }
     };
 
-    const renderGlobalError = () => {
+    // ... (기존 렌더링 함수: renderGlobalError) ...
+    const renderGlobalError = () => { /* ... (원본과 동일) ... */ 
         if (!errorMessage || currentPage === 'page1') return null; 
-        return ( <div id="global-error-message" /* ... */ > </div> );
+        // ⭐️ 원본 파일에 있던 글로벌 오류 메시지 (임시로 추가)
+        return ( <div id="global-error-message" className="fixed bottom-4 right-4 bg-red-600 text-white p-4 rounded-lg shadow-lg z-50 max-w-sm" onClick={() => setErrorMessage('')}>{errorMessage}</div> );
     };
 
     return (
