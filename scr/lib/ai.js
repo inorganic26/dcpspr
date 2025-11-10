@@ -57,22 +57,11 @@ async function callGeminiAPI(prompt) {
 }
 
 // -------------------------------------------------------------------
-// (getDifficulty 함수는 변경 없음)
+// ⭐️ [삭제] 하드코딩된 getDifficulty 함수 제거
 // -------------------------------------------------------------------
-function getDifficulty(qNum, selectedClass) {
-    if (!selectedClass) return '정보 없음';
-    if (selectedClass.includes('고2') || selectedClass.includes('고1')) {
-        if (qNum >= 14) return '어려움';
-        if (qNum >= 6) return '보통';
-        return '쉬움';
-    } else {
-        if (qNum >= 18) return '어려움';
-        if (qNum >= 9) return '보통';
-        return '쉬움';
-    }
-}
 
-// (학생 개별 분석 - 변경 없음)
+
+// ⭐️ [수정] 학생 개별 분석 (하드코딩 난이도 제거)
 export async function getAIAnalysis(student, data, selectedClass, questionUnitMap) {
     const incorrectAnswers = student.answers.filter(a => !a.isCorrect);
     if (incorrectAnswers.length === 0) {
@@ -84,14 +73,24 @@ export async function getAIAnalysis(student, data, selectedClass, questionUnitMa
         });
     }
 
+    // ⭐️ [수정] AI가 분석한 난이도를 questionUnitMap에서 가져오도록 수정
+    const unitMap = new Map();
+    const difficultyMap = new Map();
+    if (questionUnitMap && questionUnitMap.question_units) {
+        questionUnitMap.question_units.forEach(item => {
+            unitMap.set(item.qNum, item.unit);
+            difficultyMap.set(item.qNum, item.difficulty);
+        });
+    } else {
+         throw new Error("학생 분석을 위한 '문항 단원 맵' 데이터가 없습니다. 파일 업로드 시 AI 분석이 실패했을 수 있습니다.");
+    }
+
     const incorrectInfoForAI = incorrectAnswers.map(ans => ({
         qNum: ans.qNum,
-        difficulty: getDifficulty(ans.qNum, selectedClass)
+        // ⭐️ [수정] 하드코딩된 getDifficulty 대신 AI가 분석한 난이도를 사용
+        difficulty: difficultyMap.get(ans.qNum) || '분석 안됨'
     }));
     
-    if (!questionUnitMap || !questionUnitMap.question_units) {
-        throw new Error("학생 분석을 위한 '문항 단원 맵' 데이터가 없습니다. 파일 업로드 시 AI 분석이 실패했을 수 있습니다.");
-    }
 
     const prompt = `
         당신은 데이터 기반 교육 컨설턴트입니다. 다음은 한 학생의 수학 시험 결과와 문항별 개념 맵입니다. 학생의 전반적인 강점, 약점, 학습 추천 방안과 함께, 틀린 각 문항에 대한 분석을 제공해주세요. 모든 내용은 한국어로, 전문적이고 격려하는 톤으로 작성해주세요. 분석 내용에는 '학생'이라는 단어나 특정 이름을 언급하지 말고, 주어를 생략하여 서술하세요.
@@ -103,7 +102,7 @@ export async function getAIAnalysis(student, data, selectedClass, questionUnitMa
         **시험 문항별 개념 (미리 분석됨):**
         ${JSON.stringify(questionUnitMap, null, 2)}
 
-        **틀린 문항 정보 (JSON):**
+        **틀린 문항 정보 (AI가 분석한 난이도 포함):**
         ${JSON.stringify(incorrectInfoForAI, null, 2)}
         
         **결과는 반드시 다음 JSON 형식으로만 반환해주세요. 설명이나 다른 텍스트는 포함하지 마세요:**
@@ -178,38 +177,39 @@ export async function getOverallAIAnalysis(data) {
 
 // ⭐️ [수정] 단원 매핑 (프롬프트 수정)
 export async function getQuestionUnitMapping(data) {
-    // ⭐️ [수정] 프롬프트 내용을 RPM 유형명 스타일로 변경
     const prompt = `
-        다음은 시험지 전체 텍스트입니다. 1번부터 ${data.questionCount}번까지 각 문항이 다루는 **가장 세부적인 '문제 유형명'**을 분석하여 찾아주세요.
+        다음은 시험지 전체 텍스트입니다. 1번부터 ${data.questionCount}번까지 각 문항이 다루는 **(1)가장 세부적인 '문제 유형명'**과 **(2)난이도**를 분석하여 찾아주세요.
 
         **시험지 전체 텍스트 (PDF 내용):**
         ${data.pdfInfo.fullText.substring(0, 15000)}
 
         **분석 요청:**
-        각 문항에 대해, RPM 수학 교재의 유형명처럼 **매우 세부적인 '유형명'**을 JSON 형식으로 반환해주세요.
+        각 문항에 대해, RPM 수학 교재의 유형명처럼 **매우 세부적인 '유형명(unit)'**과 **'난이도(difficulty)'**를 JSON 형식으로 반환해주세요.
         
         [매우 중요]
-        - 단순한 단원명('삼각비', '원의 방정식')을 절대 반환하지 마세요.
-        - 실제 문제집의 유형명처럼 상세해야 합니다.
+        - 단순한 단원명('삼각비')을 절대 반환하지 마세요.
+        - 난이도는 반드시 "A", "B-", "B0", "B+", "C" 5단계로 분류해주세요.
+        - (A = 가장 쉬움, B0 = 보통, C = 가장 어려움)
+        - '쉬움', '보통', '어려움'을 사용하지 마세요.
         
-        [좋은 예시]
+        [좋은 예시 - 유형명]
         - "유형 01: 두 점 사이의 거리"
         - "유형 05: 선분의 길이의 제곱의 합의 최솟값"
         - "유형 08: x, y축에 동시에 접하는 원의 방정식"
         - "유형 11: 삼각비의 값을 이용한 식의 계산"
         - "유형 15: 표준편차와 분산의 관계"
 
-        [나쁜 예시]
-        - "삼각비"
-        - "산포도"
-        - "원의 방정식"
+        [좋은 예시 - 난이도]
+        - "A" (가장 쉬운 유형, 기본 문제)
+        - "B0" (보통 유형, 대표 문제)
+        - "C" (가장 어려운 유형, 킬러 문제)
 
         **결과는 반드시 다음 JSON 형식으로만 반환해주세요. 설명이나 다른 텍스트는 포함하지 마세요:**
         {
             "question_units": [
-                { "qNum": 1, "unit": "유형 01: 집합의 뜻과 표현" },
-                { "qNum": 2, "unit": "유형 03: 두 점 사이의 거리" },
-                { "qNum": ${data.questionCount}, "unit": "..." }
+                { "qNum": 1, "unit": "유형 01: 집합의 뜻과 표현", "difficulty": "A" },
+                { "qNum": 2, "unit": "유형 03: 두 점 사이의 거리", "difficulty": "B-" },
+                { "qNum": ${data.questionCount}, "unit": "...", "difficulty": "C" }
             ]
         }
     `; 

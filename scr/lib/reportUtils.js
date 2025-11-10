@@ -14,24 +14,13 @@ function replaceAISpinner(html, aiContent) {
 }
 
 /**
- * 난이도를 반환하는 헬퍼 함수
+ * ⭐️ [삭제] 난이도를 반환하는 헬퍼 함수
  */
-function getDifficulty(qNum, selectedClass) {
-    if (!selectedClass) return '정보 없음';
-    if (selectedClass.includes('고1')) {
-        if (qNum >= 18) return '어려움';
-        if (qNum >= 9) return '보통';
-        return '쉬움';
-    } else {
-        // (고2 이상 또는 기본값)
-        if ([14, 15, 17, 18, 19, 21].includes(qNum)) return '어려움';
-        if ([6, 7, 8, 9, 10, 11, 12, 13, 16, 20].includes(qNum)) return '보통';
-        return '쉬움';
-    }
-}
+// function getDifficulty(qNum, selectedClass) { ... }
+
 
 /**
- * ⭐️ [수정] '여백 최소화' + '높이 정렬(start)' 버전으로 함수 교체
+ * '주요 특징' HTML 생성 (변경 없음)
  */
 function generateOverallFeaturesHTML(data, aiOverallAnalysis) {
     const submittedStudents = data.students.filter(s => s.submitted);
@@ -106,7 +95,7 @@ function generateOverallFeaturesHTML(data, aiOverallAnalysis) {
 export function generateOverallReportHTML(data, aiOverallAnalysis, selectedClass, selectedDate) {
     
     // 1-1. 반 전체 주요 특징 (상단 3개 박스)
-    const featuresHtml = generateOverallFeaturesHTML(data, aiOverallAnalysis); // ⭐️ 수정된 함수 호출
+    const featuresHtml = generateOverallFeaturesHTML(data, aiOverallAnalysis); 
 
     // 1-2. AI 종합 분석 (차트 + 3개 분석)
     const summaryContent = aiOverallAnalysis ? aiOverallAnalysis.summary.replace(/\n/g, ' ') : '<div class="ai-spinner"></div>';
@@ -205,7 +194,7 @@ export function generateOverallReportHTML(data, aiOverallAnalysis, selectedClass
 
 /**
  * ----------------------------------------------------------------
- * 2. 학생 개별 리포트 HTML 생성
+ * 2. 학생 개별 리포트 HTML 생성 (수정됨)
  * ----------------------------------------------------------------
  */
 export function generateIndividualReportHTML(student, data, aiAnalysis, aiOverallAnalysis, selectedClass, selectedDate) {
@@ -224,7 +213,7 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
     }
 
     // 2-2. 반 전체 주요 특징 (상단 3개 박스) - 재사용
-    const featuresHtml = generateOverallFeaturesHTML(data, aiOverallAnalysis); // ⭐️ 수정된 함수 호출
+    const featuresHtml = generateOverallFeaturesHTML(data, aiOverallAnalysis); 
 
     // 2-3. 강사 코멘트
     const commentHtml = `
@@ -273,9 +262,14 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
         </div>
     `;
 
-    // 2-5. 단원 매핑 (AI 분석 결과 + 기본 맵)
+    // 2-5. ⭐️ [수정] 단원 매핑 (AI 분석 결과 + AI 난이도)
     const unitMap = new Map();
-    data.questionUnitMap?.question_units?.forEach(item => unitMap.set(item.qNum, item.unit));
+    const difficultyMap = new Map(); // ⭐️ AI 난이도를 저장할 맵
+    data.questionUnitMap?.question_units?.forEach(item => {
+        unitMap.set(item.qNum, item.unit);
+        difficultyMap.set(item.qNum, item.difficulty); // ⭐️ AI 난이도 저장
+    });
+    // (개별 분석에서 unit을 덮어쓸 수 있으나, difficulty는 공통맵을 따름)
     aiAnalysis?.incorrect_analysis?.forEach(item => {
         if (item.unit) unitMap.set(item.qNum, item.unit);
     });
@@ -285,7 +279,8 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
         <tr class="border-b ${!ans.isCorrect ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50'}">
             <td class="px-4 py-3 text-center font-medium ${!ans.isCorrect ? 'text-red-600' : ''}">${ans.qNum}번</td>
             <td class="px-6 py-3">${unitMap.get(ans.qNum) || ''}</td>
-            <td class="px-4 py-3 text-center">${getDifficulty(ans.qNum, selectedClass)}</td>
+            {/* ⭐️ [수정] getDifficulty 함수 대신 difficultyMap에서 AI 난이도 조회 */}
+            <td class="px-4 py-3 text-center">${difficultyMap.get(ans.qNum) || 'N/A'}</td>
             <td class="px-4 py-3 text-center font-bold ${ans.isCorrect ? 'text-blue-600' : 'text-red-600'}">${ans.isCorrect ? 'O' : 'X'}</td>
             <td class="px-4 py-3 text-center">${data.answerRates[i] ?? 'N/A'}%</td>
         </tr>
@@ -300,7 +295,7 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
                         <tr>
                             <th class="px-4 py-3 text-center">문항번호</th>
                             <th class="px-6 py-3">세부 개념 유형 (AI 분석)</th>
-                            <th class="px-4 py-3 text-center">난이도</th>
+                            <th class="px-4 py-3 text-center">난이도 (AI)</th> {/* ⭐️ 라벨 수정 */}
                             <th class="px-4 py-3 text-center">정오</th>
                             <th class="px-4 py-3 text-center">반 전체 정답률(%)</th>
                         </tr>
@@ -321,7 +316,8 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
                 <tr class="border-b bg-red-50 hover:bg-red-100">
                     <td class="px-4 py-3 text-center font-medium">${item.qNum}번</td>
                     <td class="px-6 py-3">${unitMap.get(item.qNum) || '분석 필요'}</td>
-                    <td class="px-4 py-3 text-center">${getDifficulty(item.qNum, selectedClass)}</td>
+                    {/* ⭐️ [수정] getDifficulty 함수 대신 difficultyMap에서 AI 난이도 조회 */}
+                    <td class="px-4 py-3 text-center">${difficultyMap.get(item.qNum) || 'N/A'}</td>
                     <td class="px-6 py-3">${item.analysis_point || 'AI 분석 중...'}</td>
                     <td class="px-6 py-3">${item.solution || 'AI 분석 중...'}</td>
                 </tr>
@@ -340,7 +336,7 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
                         <tr>
                             <th class="px-4 py-3 text-center">문항번호</th>
                             <th class="px-6 py-3">세부 개념 유형</th>
-                            <th class="px-4 py-3 text-center">난이도</th>
+                            <th class="px-4 py-3 text-center">난이도 (AI)</th> {/* ⭐️ 라벨 수정 */}
                             <th class="px-6 py-3">분석 포인트 (AI)</th>
                             <th class="px-6 py-3">대응 방안 (AI)</th>
                         </tr>
@@ -383,10 +379,10 @@ export function generateIndividualReportHTML(student, data, aiAnalysis, aiOveral
 
 /**
  * ----------------------------------------------------------------
- * 3. 차트 렌더링 (단일 시험용)
+ * 3. 차트 렌더링 (단일 시험용) (수정됨)
  * ----------------------------------------------------------------
  */
-export function renderScoreChart(canvas, studentData, currentStudent) {
+export function renderScoreChart(canvas, studentData, currentStudent, animation = true) { // ⭐️ 'animation' 인자 추가
     if (!canvas) return null;
     if (!studentData || !studentData.students) { 
          console.warn("renderScoreChart: studentData.students가 없습니다.");
@@ -446,6 +442,8 @@ export function renderScoreChart(canvas, studentData, currentStudent) {
         options: {
             responsive: true,
             maintainAspectRatio: true,
+            // ⭐️ [수정] 'animation' 옵션 적용
+            animation: animation, 
             scales: { 
                 y: { 
                     beginAtZero: true, 
@@ -494,7 +492,6 @@ export function renderScoreChart(canvas, studentData, currentStudent) {
 /**
  * ----------------------------------------------------------------
  * 4. [신규] 누적 성적 추이 차트 렌더링 (라인 차트)
- * (이 함수는 '개별 리포트'에서 호출되지 않으며, '누적 리포트' 전용입니다.)
  * ----------------------------------------------------------------
  */
 export function renderCumulativeScoreChart(canvas, cumulativeData, studentName) {

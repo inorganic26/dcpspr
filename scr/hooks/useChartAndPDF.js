@@ -2,15 +2,12 @@
 
 import { useEffect, useCallback, useRef } from 'react';
 import { useReportContext } from '../context/ReportContext';
-// ⭐️ [수정] renderScoreChart 함수가 animation 옵션을 받도록 수정 (reportUtils.js도 수정 필요)
 import { renderScoreChart, renderCumulativeScoreChart } from '../lib/reportUtils.js';
 import html2canvas from 'html2canvas'; 
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import Chart from 'chart.js/auto';
 
-// (이 파일의 1~310라인까지의 폰트 로드 및 PDF 헬퍼 함수들은 동일합니다)
-// ... (getFontBase64, initializePdf, addPdfTitle, addPdfSectionTitle, addWrappedText, addFeaturesSection, addAiAnalysisSection, getDifficulty 함수는 동일) ...
 // ⭐️ 2. 폰트 데이터를 저장할 변수 (앱 실행 중 한 번만 로드)
 let notoBase64 = null;
 
@@ -124,7 +121,7 @@ function addWrappedText(pdf, text, yPos, options = {}) {
 }
 
 /**
- * ⭐️ [수정] 3개의 박스로 구성된 '주요 특징' 섹션을 그립니다. (여백 버그 수정)
+ * '주요 특징' 섹션을 그립니다. (여백 버그 수정)
  */
 function addFeaturesSection(pdf, data, yPos) {
     if (!data || !data.students) { 
@@ -148,12 +145,11 @@ function addFeaturesSection(pdf, data, yPos) {
         if (rate <= 40) highErrorRateQuestions.push({ qNum: i + 1, rate: rate });
     });
 
-    // --- ⭐️ [수정] 높이 계산 로직 (여백 버그 수정) ---
     const boxWidth = 58;
     const boxMargin = 7.5;
     const startX = 15;
-    const minBoxHeight = 25; // 최소 높이
-    const maxBoxHeight = 55; // ⭐️ 최대 높이 55mm (5.5cm)로 설정
+    const minBoxHeight = 25; 
+    const maxBoxHeight = 55; 
     
     const topPadding = 6;
     const textPadding = 2;
@@ -170,31 +166,25 @@ function addFeaturesSection(pdf, data, yPos) {
         return (lines.length * fontSize * 0.352778 * lineSpacing);
     };
     
-    // 1. 점수 분포 (파란색) 높이 계산
     const scoreText = `최고 ${maxScore}점, 최저 ${minScore}점, 평균 ${classAverage}점`;
     const scoreTextHeight = calcTextHeight(scoreText, 10, 1.6, boxWidth - 10);
     const scoreBoxHeight = topPadding + titleHeight + textPadding + scoreTextHeight + bottomPadding;
 
-    // 2. 전원 정답 (녹색) 높이 계산
     const correctText = allCorrectQuestions.length > 0 ? allCorrectQuestions.map(q => `${q}번`).join(', ') : '없음';
     const correctTextHeight = calcTextHeight(correctText, 10, 1.6, boxWidth - 10);
     const correctBoxHeight = topPadding + titleHeight + textPadding + correctTextHeight + bottomPadding;
 
-    // 3. 오답 문항 (붉은색) 높이 계산
     const errorText = highErrorRateQuestions.length > 0 
         ? highErrorRateQuestions.map(q => `${q.qNum}번 (${q.rate}%)`).join(', ') 
         : '없음';
     const errorTextHeight = calcTextHeight(errorText, 9, 1.6, boxWidth - 10);
     const errorBoxHeight = topPadding + titleHeight + textPadding + errorTextHeight + bottomPadding;
 
-    // 4. 3개 높이 중 가장 큰 값을 선택하되, 최소/최대 높이 적용
     let boxHeight = Math.max(scoreBoxHeight, correctBoxHeight, errorBoxHeight);
     boxHeight = Math.max(minBoxHeight, Math.min(boxHeight, maxBoxHeight));
-    // --- ⭐️ [수정] 높이 계산 로직 완료 ---
 
     pdf.setLineWidth(0.5);
 
-    // ⭐️ [신규] 텍스트 시작 Y 좌표 계산
     const titleStartY = yPos + topPadding + (11 * 0.352778); 
     const textStartY = yPos + topPadding + titleHeight + textPadding + (10 * 0.352778); 
     const errorTextStartY = yPos + topPadding + titleHeight + textPadding + (9 * 0.352778); 
@@ -309,20 +299,9 @@ function addAiAnalysisSection(pdf, title, content, yPos, colorTheme = 'gray') {
 
 
 /**
- * 난이도 계산 (임시)
+ * ⭐️ [삭제] 난이도를 반환하는 헬퍼 함수
  */
-function getDifficulty(qNum, selectedClass) {
-    if (!selectedClass) return '정보 없음';
-    if (selectedClass.includes('고1')) {
-        if (qNum >= 18) return '어려움';
-        if (qNum >= 9) return '보통';
-        return '쉬움';
-    } else {
-        if ([14, 15, 17, 18, 19, 21].includes(qNum)) return '어려움';
-        if ([6, 7, 8, 9, 10, 11, 12, 13, 16, 20].includes(qNum)) return '보통';
-        return '쉬움';
-    }
-}
+// function getDifficulty(qNum, selectedClass) { ... }
 
 
 // --- ⭐️ 메인 훅 (수정됨) ⭐️ ---
@@ -348,7 +327,6 @@ export const useChartAndPDF = () => {
             ? data.students.find(s => s.name === selectedStudent) 
             : null;
 
-        // --- 단일 시험 (막대) 차트 렌더링 ---
         if (chartInstanceRef.current) {
             chartInstanceRef.current.destroy();
         }
@@ -360,7 +338,6 @@ export const useChartAndPDF = () => {
                 classAverage: data.classAverage,
             };
 
-            // ⭐️ [수정] 차트 렌더링 시 애니메이션 활성화 (기본값)
             chartInstanceRef.current = renderScoreChart(
                 canvas, 
                 studentDataForChart, 
@@ -389,10 +366,8 @@ export const useChartAndPDF = () => {
         button.textContent = '저장 중...';
         button.disabled = true;
         
-        // [수정] '단일 시험' 차트 인스턴스만 가져옴
         let currentActiveChart = chartInstanceRef.current;
         
-        // ⭐️ [수정] 타이밍 문제 해결 (애니메이션 끄고 강제 렌더링)
         if (!currentActiveChart) {
              const chartCanvas = document.getElementById('scoreChart');
              const data = currentReportData; 
@@ -410,7 +385,6 @@ export const useChartAndPDF = () => {
                      classAverage: data.classAverage,
                  };
 
-                 // ⭐️ [수정] 1. 애니메이션 없이 차트 생성
                  const newChart = renderScoreChart(
                     chartCanvas, 
                     studentDataForChart, 
@@ -418,18 +392,14 @@ export const useChartAndPDF = () => {
                     false // ⭐️ animation: false
                  );
                  
-                 // ⭐️ [수정] 2. 차트 그리기가 완료될 때까지 강제로 기다림
                  if (newChart) {
-                    await newChart.draw(); // ⭐️ 중요: 그리기를 강제로 동기화
+                    await newChart.draw(); 
                     console.log("강제 렌더링 완료.");
                  }
                 
                  currentActiveChart = newChart; 
                  chartInstanceRef.current = newChart; 
                  setActiveChart(newChart); 
-                
-                 // ⭐️ [수정] 3. 300ms '핵' 제거 (더 이상 필요 없음)
-                 // await new Promise(resolve => setTimeout(resolve, 300)); 
              }
         }
         
@@ -459,8 +429,13 @@ export const useChartAndPDF = () => {
             
             const cleanText = (text) => text === undefined || text === null ? ' ' : String(text).replace(/\n/g, ' ');
 
+            // ⭐️ [수정] AI 난이도를 가져오기 위한 맵 생성
             const unitMap = new Map();
-            data.questionUnitMap?.question_units?.forEach(item => unitMap.set(item.qNum, item.unit));
+            const difficultyMap = new Map();
+            data.questionUnitMap?.question_units?.forEach(item => {
+                unitMap.set(item.qNum, item.unit);
+                difficultyMap.set(item.qNum, item.difficulty); // ⭐️ AI 난이도 저장
+            });
             aiStudent?.incorrect_analysis?.forEach(item => { if (item.unit) unitMap.set(item.qNum, item.unit); });
 
             let chartImgData = null;
@@ -468,11 +443,9 @@ export const useChartAndPDF = () => {
 
             if (chartCanvas) {
                 try {
-                    // ⭐️ [수정] 캡처 시점에 currentActiveChart가 항상 존재하도록 보장됨
                     if (currentActiveChart && typeof currentActiveChart.toBase64Image === 'function') {
                         chartImgData = currentActiveChart.toBase64Image('image/png', 1.0);
                     } else {
-                        // ⭐️ [수정] fallback 로직은 'UNKNOWN' 오류의 주 원인이므로 제거하고, html2canvas를 우선 시도
                         console.warn("currentActiveChart(ref)가 없거나 비정상입니다. html2canvas fallback 실행");
                         chartImgData = await html2canvas(chartCanvas, { 
                             scale: 2, logging: false, useCORS: true, backgroundColor: null 
@@ -555,14 +528,14 @@ export const useChartAndPDF = () => {
                 const errataBody = student.answers.map((ans, i) => ([
                     `${ans.qNum}번`,
                     unitMap.get(ans.qNum) || '',
-                    getDifficulty(ans.qNum, selectedClass),
+                    difficultyMap.get(ans.qNum) || 'N/A', // ⭐️ [수정] AI 난이도 사용
                     ans.isCorrect ? 'O' : 'X',
                     `${data.answerRates[i] ?? 'N/A'}%` 
                 ]));
                 
                 autoTable(pdf, {
                     startY: yPos,
-                    head: [['문항번호', '세부 개념 유형 (AI 분석)', '난이도', '정오', '반 전체 정답률(%)']],
+                    head: [['문항번호', '세부 개념 유형 (AI 분석)', '난이도 (AI)', '정오', '반 전체 정답률(%)']], // ⭐️ 라벨 수정
                     body: errataBody,
                     theme: 'grid',
                     styles: { font: 'NotoSansKR', fontStyle: 'normal', fontSize: 8, cellPadding: 1.5 }, 
@@ -588,14 +561,14 @@ export const useChartAndPDF = () => {
                     const analysisBody = aiStudent.incorrect_analysis.map(item => ([
                         `${item.qNum}번`,
                         unitMap.get(item.qNum) || '분석 필요',
-                        getDifficulty(item.qNum, selectedClass),
+                        difficultyMap.get(item.qNum) || 'N/A', // ⭐️ [수정] AI 난이도 사용
                         cleanText(item.analysis_point),
                         cleanText(item.solution)
                     ]));
 
                     autoTable(pdf, {
                         startY: yPos,
-                        head: [['문항번호', '세부 개념 유형', '난이도', '분석 포인트 (AI)', '대응 방안 (AI)']],
+                        head: [['문항번호', '세부 개념 유형', '난이도 (AI)', '분석 포인트 (AI)', '대응 방안 (AI)']], // ⭐️ 라벨 수정
                         body: analysisBody,
                         theme: 'grid',
                         styles: { font: 'NotoSansKR', fontStyle: 'normal', fontSize: 8, cellPadding: 1.5 },
@@ -616,7 +589,7 @@ export const useChartAndPDF = () => {
                 // (반 전체 리포트 로직)
                 addPdfTitle(pdf, `${selectedClass} ${selectedDate} 주간테스트 리포트 (반 전체)`);
                 yPos = addPdfSectionTitle(pdf, '💡 반 전체 주요 특징', 40);
-                yPos = addFeaturesSection(pdf, data, yPos); // ⭐️ 수정된 함수 호출
+                yPos = addFeaturesSection(pdf, data, yPos); 
                 yPos = addPdfSectionTitle(pdf, '🤖 반 전체 AI 종합 분석', yPos + 5);
 
                 if (chartImgData) {
