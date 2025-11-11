@@ -1,247 +1,396 @@
 // scr/hooks/useFirebase.js
 
-import { getAuth } from 'firebase/auth'; // ⭐️ [수정] auth에서 가져오기
 import { 
-    // ⭐️ [수정] firestore에서 getAuth 제거
-    doc, getDoc, writeBatch, setDoc, getDocs, collection, 
-    query, where, deleteDoc, runTransaction, updateDoc 
+    getFirestore, collection, query, where, getDocs, doc, getDoc, 
+    setDoc, addDoc, serverTimestamp, updateDoc, deleteDoc, writeBatch 
 } from 'firebase/firestore';
-import { db } from '../lib/firebaseConfig'; // ⭐️ [수정] 경로 수정
-
-// (loginTeacher, registerTeacher, loadReportSummaries, loadReportDetails, saveNewReport ...
-// ... 이 파일의 다른 기존 함수들은 그대로 둡니다)
-
-// 예시: loginTeacher
-export const loginTeacher = async (name, phone) => {
-    const q = query(collection(db, "teachers"), where("name", "==", name), where("phone", "==", phone));
-    const querySnapshot = await getDocs(q);
-    if (querySnapshot.empty) {
-        return null;
-    }
-    return { id: querySnapshot.docs[0].id, ...querySnapshot.docs[0].data() };
-};
-
-// 예시: registerTeacher
-export const registerTeacher = async (name, phone) => {
-    // ... (기존 로직) ...
-    const newTeacherRef = doc(collection(db, "teachers"));
-    await setDoc(newTeacherRef, { name, phone });
-    return { id: newTeacherRef.id, name, phone };
-};
-
-// 예시: loadReportSummaries
-export const loadReportSummaries = async () => {
-    // ... (기존 로직) ...
-    const q = query(collection(db, "reports")); // ⭐️ 'reports'로 가정
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-};
-
-// 예시: loadReportDetails
-export const loadReportDetails = async (reportId) => {
-    // ... (기존 로직) ...
-    const reportRef = doc(db, 'reports', reportId);
-    const reportSnap = await getDoc(reportRef);
-    if (!reportSnap.exists()) {
-        throw new Error("Report details not found.");
-    }
-    const reportData = reportSnap.data();
-    
-    const studentsCol = collection(reportRef, 'students');
-    const studentsSnap = await getDocs(studentsCol);
-    const students = studentsSnap.docs.map(d => d.data());
-    
-    return { ...reportData, students };
-};
-
-// 예시: saveNewReport
-export const saveNewReport = async (className, date, studentData, commonData) => {
-    // ... (기존 로직) ...
-    const reportId = `${date}_${className}`; // ⭐️ ID 생성 방식 가정
-    const reportRef = doc(db, 'reports', reportId);
-    
-    const batch = writeBatch(db);
-    
-    const reportDocData = {
-        ...commonData,
-        className,
-        date,
-        studentCount: studentData.studentCount,
-        classAverage: studentData.classAverage,
-        questionCount: studentData.questionCount,
-        answerRates: studentData.answerRates,
-    };
-    batch.set(reportRef, reportDocData);
-    
-    studentData.students.forEach(student => {
-        const studentRef = doc(reportRef, 'students', student.name);
-        batch.set(studentRef, student);
-    });
-    
-    await batch.commit();
-    return reportId;
-};
-
-// 예시: deleteReport
-export const deleteReport = async (reportId) => {
-    // (주의: 서브컬렉션(students)을 먼저 삭제해야 할 수 있음)
-    // ... (기존 로직) ...
-    // 단순화된 버전:
-    const reportRef = doc(db, 'reports', reportId);
-    await deleteDoc(reportRef); // ⭐️ (실제로는 서브컬렉션 삭제 로직 필요)
-};
-
-
-// --- ⭐️ [신규/수정] 영역 시작 ---
+import { db } from '../lib/firebaseConfig';
 
 /**
- * ⭐️ [신규] 개별 학생의 AI 분석 결과를 Firestore에 저장(업데이트)합니다.
- * (useReportGenerator.js에서 필요)
+ * ⭐️ [기존] 이름과 전화번호로 선생님 정보를 Firestore에서 조회 (로그인)
+ * (이 함수는 변경 없음)
  */
-export const updateStudentAnalysis = async (reportId, studentName, analysis) => {
-    const studentRef = doc(db, 'reports', reportId, 'students', studentName);
+export const loginTeacher = async (name, phone) => {
     try {
-        // updateDoc은 기존 문서를 덮어쓰지 않고 aiAnalysis 필드만 병합(추가/수정)합니다.
+        const teachersRef = collection(db, 'teachers');
+        const q = query(teachersRef, 
+            where("name", "==", name), 
+            where("phone", "==", phone)
+        );
+        
+        const querySnapshot = await getDocs(q);
+        
+        if (querySnapshot.empty) {
+            console.log('일치하는 선생님 정보 없음');
+            return null;
+        }
+        
+        const teacherDoc = querySnapshot.docs[0];
+        return { id: teacherDoc.id, ...teacherDoc.data() }; 
+
+    } catch (error) {
+        console.error("로그인 중 Firestore 오류:", error);
+        throw new Error("로그인 중 오류가 발생했습니다.");
+    }
+};
+
+/**
+ * ⭐️ [기존] 이름과 전화번호로 새 선생님을 등록 (회원가입)
+ * (이 함수는 변경 없음)
+ */
+export const registerTeacher = async (name, phone) => {
+    try {
+        const teachersRef = collection(db, 'teachers');
+        
+        // 1. 이미 존재하는지 확인
+        const q = query(teachersRef, 
+            where("name", "==", name), 
+            where("phone", "==", phone)
+        );
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
+            throw new Error("이미 동일한 정보로 등록된 사용자가 있습니다.");
+        }
+
+        // 2. 새 선생님 문서 추가
+        const newTeacherDocRef = await addDoc(teachersRef, {
+            name: name,
+            phone: phone,
+            createdAt: serverTimestamp()
+        });
+        
+        console.log("새 선생님 등록:", newTeacherDocRef.id);
+        
+        // 3. 새로 생성된 정보 반환
+        return { id: newTeacherDocRef.id, name: name, phone: phone };
+
+    } catch (error) {
+        console.error("등록 중 Firestore 오류:", error);
+        throw error; // 오류를 App.jsx로 다시 던져서 UI에 표시
+    }
+};
+
+
+// --- ⭐️ [기존] 리포트 데이터 로직 (변경 없음) ---
+
+export const loadReportSummaries = async () => {
+    try {
+        const summaries = [];
+        const reportsRef = collection(db, 'reports');
+        const querySnapshot = await getDocs(reportsRef);
+        
+        querySnapshot.forEach(doc => {
+            const data = doc.data();
+            summaries.push({
+                id: doc.id, 
+                className: data.className,
+                date: data.date,
+                studentCount: data.studentCount || 0
+            });
+        });
+        
+        console.log("리포트 요약 정보 로드 성공:", summaries.length, "개");
+        return summaries;
+        
+    } catch (error) {
+        console.error("리포트 요약 로드 중 Firestore 오류:", error);
+        throw new Error("리포트 요약 로드 중 오류 발생: " + error.message);
+    }
+};
+
+export const loadReportDetails = async (reportId) => {
+    if (!reportId) throw new Error("reportId가 필요합니다.");
+    
+    try {
+        const reportRef = doc(db, 'reports', reportId);
+        const reportSnap = await getDoc(reportRef);
+
+        if (!reportSnap.exists()) {
+            throw new Error("리포트 데이터를 찾을 수 없습니다.");
+        }
+
+        const commonData = reportSnap.data();
+        
+        const students = [];
+        const studentsRef = collection(db, 'reports', reportId, 'students');
+        const studentsSnap = await getDocs(studentsRef);
+        
+        studentsSnap.forEach(doc => {
+            students.push({ id: doc.id, ...doc.data() });
+        });
+
+        console.log(`[${reportId}] 리포트 상세 로드 성공. (학생 ${students.length}명)`);
+        
+        return {
+            ...commonData,
+            students: students 
+        };
+
+    } catch (error) {
+        console.error(`[${reportId}] 리포트 상세 로드 중 오류:`, error);
+        throw new Error("리포트 상세 데이터 로드 중 오류 발생: " + error.message);
+    }
+};
+
+export const saveNewReport = async (className, uploadDate, studentData, commonData) => {
+    const reportId = `${className}_${uploadDate}`; 
+    const reportRef = doc(db, 'reports', reportId);
+
+    console.log(`[${reportId}] 새 리포트 저장 시작...`);
+
+    try {
+        const batch = writeBatch(db);
+
+        const commonDataToSave = {
+            className: className,
+            date: uploadDate,
+            pdfInfo: commonData.pdfInfo,
+            aiOverallAnalysis: commonData.aiOverallAnalysis,
+            questionUnitMap: commonData.questionUnitMap,
+            studentCount: studentData.studentCount,
+            classAverage: studentData.classAverage,
+            questionCount: studentData.questionCount,
+            answerRates: studentData.answerRates,
+            lastUpdated: serverTimestamp()
+        };
+        batch.set(reportRef, commonDataToSave);
+
+        studentData.students.forEach(student => {
+            const studentRef = doc(db, 'reports', reportId, 'students', student.name);
+            batch.set(studentRef, student);
+        });
+        
+        await batch.commit();
+        
+        console.log(`[${reportId}] 새 리포트 저장 완료. (학생 ${studentData.studentCount}명)`);
+        return reportId; 
+
+    } catch (error) {
+        console.error(`[${reportId}] 새 리포트 저장 중 Firestore 오류:`, error);
+        throw new Error("새 리포트 저장 중 오류 발생: " + error.message);
+    }
+};
+
+export const updateStudentAnalysis = async (reportId, studentName, analysis) => {
+    if (!reportId || !studentName) throw new Error("reportId와 studentName이 필요합니다.");
+    
+    const studentRef = doc(db, 'reports', reportId, 'students', studentName);
+    
+    try {
         await updateDoc(studentRef, {
             aiAnalysis: analysis
         });
+        console.log(`[${reportId}] 학생 '${studentName}'의 AI 분석 저장 완료.`);
     } catch (error) {
-        console.error("AI 분석 결과 저장 실패:", error);
-        throw new Error(`'${studentName}' 학생의 AI 분석 결과를 저장하는 중 오류가 발생했습니다: ${error.message}`);
+        console.error(`[${reportId}] 학생 '${studentName}' AI 분석 저장 오류:`, error);
+        throw new Error("학생 AI 분석 결과 저장 중 오류 발생: " + error.message);
     }
 };
 
-/**
- * 헬퍼: 학생 목록을 기반으로 새 통계를 계산합니다.
- */
-const recalculateStats = (studentList, questionCount) => {
-    const studentCount = studentList.length;
-    if (studentCount === 0) {
-        return {
-            studentCount: 0,
-            classAverage: 0,
-            answerRates: Array(questionCount).fill(0),
-        };
+export const recalculateReportStatistics = async (reportId) => {
+    if (!reportId) throw new Error("reportId가 필요합니다.");
+
+    console.log(`[${reportId}] 통계 재계산 시작...`);
+    const reportRef = doc(db, 'reports', reportId);
+    
+    const reportSnap = await getDoc(reportRef);
+    if (!reportSnap.exists()) {
+        throw new Error("통계 재계산을 위한 리포트 문서를 찾을 수 없습니다.");
+    }
+    const questionCount = reportSnap.data().questionCount || 0;
+    if (questionCount === 0) {
+         throw new Error("통계 재계산 실패: 문항 수(questionCount)가 0입니다.");
     }
 
-    const totalScore = studentList.reduce((sum, s) => sum + s.score, 0);
-    const classAverage = (totalScore / studentCount).toFixed(1);
+    const studentsRef = collection(db, 'reports', reportId, 'students');
+    const studentsSnap = await getDocs(studentsRef);
     
-    const questionCorrectCounts = Array(questionCount).fill(0);
-    studentList.forEach(student => {
-        // 'answers'가 qNum 기반 객체 배열이라고 가정
-        student.answers.forEach(answer => {
-            const qIndex = answer.qNum - 1; // qNum은 1부터 시작
-            if (answer.isCorrect && qIndex >= 0 && qIndex < questionCount) {
-                questionCorrectCounts[qIndex]++;
+    let totalScore = 0;
+    const students = [];
+    const questionCorrectCounts = Array(questionCount).fill(0); 
+
+    studentsSnap.forEach(doc => {
+        const student = doc.data();
+        if (!student.submitted) return; 
+
+        students.push(student);
+        totalScore += student.score;
+
+        student.answers.forEach((ans, index) => {
+            if (ans.isCorrect === true && index < questionCount) {
+                questionCorrectCounts[index]++;
             }
         });
     });
-    
-    const answerRates = questionCorrectCounts.map(count =>
-        parseFloat(((count / studentCount) * 100).toFixed(1))
-    );
 
-    return {
+    const studentCount = students.length;
+
+    const newStats = {
         studentCount: studentCount,
-        classAverage: classAverage,
-        answerRates: answerRates,
+        classAverage: (studentCount > 0 ? (totalScore / studentCount) : 0).toFixed(1),
+        answerRates: questionCorrectCounts.map(count => 
+            parseFloat(((studentCount > 0 ? count / studentCount : 0) * 100).toFixed(1))
+        )
     };
+
+    try {
+        await updateDoc(reportRef, {
+            studentCount: newStats.studentCount,
+            classAverage: newStats.classAverage,
+            answerRates: newStats.answerRates,
+            lastUpdated: serverTimestamp()
+        });
+        console.log(`[${reportId}] 통계 재계산 및 업데이트 완료.`);
+        return newStats; 
+
+    } catch (error) {
+        console.error(`[${reportId}] 통계 업데이트 중 오류:`, error);
+        throw new Error("통계 업데이트 중 오류 발생: " + error.message);
+    }
+};
+
+export const deleteStudentFromReport = async (reportId, studentName) => {
+    if (!reportId || !studentName) throw new Error("reportId와 studentName이 필요합니다.");
+    
+    const studentRef = doc(db, 'reports', reportId, 'students', studentName);
+    
+    try {
+        await deleteDoc(studentRef);
+        console.log(`[${reportId}] 학생 '${studentName}' 삭제 완료.`);
+        
+        const newStats = await recalculateReportStatistics(reportId);
+        return newStats; 
+
+    } catch (error) {
+        console.error(`[${reportId}] 학생 '${studentName}' 삭제 및 재계산 오류:`, error);
+        throw new Error("학생 데이터 삭제/재계산 중 오류 발생: " + error.message);
+    }
+};
+
+export const deleteReport = async (reportId) => {
+    if (!reportId) throw new Error("reportId가 필요합니다.");
+    
+    console.log(`[${reportId}] 리포트 삭제 시작...`);
+    const reportRef = doc(db, 'reports', reportId);
+    
+    try {
+        const batch = writeBatch(db);
+        const studentsRef = collection(db, 'reports', reportId, 'students');
+        const studentsSnap = await getDocs(studentsRef);
+        
+        if (!studentsSnap.empty) {
+            console.log(`[${reportId}] 학생 ${studentsSnap.size}명 데이터 삭제 중...`);
+            studentsSnap.forEach(doc => {
+                batch.delete(doc.ref);
+            });
+        }
+        
+        batch.delete(reportRef);
+        await batch.commit();
+        
+        console.log(`[${reportId}] 리포트 및 하위 학생 데이터 삭제 완료.`);
+
+    } catch (error) {
+        console.error(`[${reportId}] 리포트 삭제 오류:`, error);
+        throw new Error("리포트 삭제 중 오류 발생: " + error.message);
+    }
+};
+
+export const addStudentToReport = async (reportId, student) => {
+    if (!reportId || !student || !student.name) {
+        throw new Error("reportId와 학생 정보(이름 포함)가 필요합니다.");
+    }
+
+    const studentRef = doc(db, 'reports', reportId, 'students', student.name);
+
+    try {
+        await setDoc(studentRef, student);
+        console.log(`[${reportId}] 학생 '${student.name}' 추가/업데이트 완료.`);
+        
+        const newStats = await recalculateReportStatistics(reportId);
+        return newStats; 
+
+    } catch (error) {
+        console.error(`[${reportId}] 학생 '${student.name}' 추가 및 재계산 오류:`, error);
+        throw new Error("학생 데이터 추가/재계산 중 오류 발생: " + error.message);
+    }
 };
 
 
+// --- ⭐️ [신규] 과목 관리(Subject) 로직 ---
+
 /**
- * ⭐️ [수정] 학생 삭제 - 헬퍼 함수 사용
+ * ⭐️ [신규] 'subjects' 컬렉션에서 모든 과목 목록을 불러옵니다.
  */
-export const deleteStudentFromReport = async (reportId, studentName) => {
-    const reportRef = doc(db, 'reports', reportId);
-    const studentRef = doc(reportRef, 'students', studentName);
-
+export const loadSubjects = async () => {
     try {
-        const newStats = await runTransaction(db, async (transaction) => {
-            // 1. 메인 리포트에서 총 문항 수 가져오기
-            const reportSnap = await transaction.get(reportRef);
-            if (!reportSnap.exists()) throw new Error("리포트 문서를 찾을 수 없습니다.");
-            const questionCount = reportSnap.data().questionCount;
-
-            // 2. 학생 삭제
-            transaction.delete(studentRef);
-
-            // 3. 남은 학생 목록 가져오기
-            // (트랜잭션 내에서 getDocs는 비권장될 수 있으나, 이 경우엔
-            // 삭제 후의 상태를 계산해야 하므로 트랜잭션 외부에서 읽어와야 함)
-            
-            // ⭐️ [수정] 트랜잭션은 쓰기에만 집중하고, 읽기는 밖에서 수행
-            const studentsCollectionRef = collection(reportRef, 'students');
-            const allStudentsSnap = await getDocs(studentsCollectionRef);
-            
-            const remainingStudents = allStudentsSnap.docs
-                .map(d => d.data())
-                .filter(s => s.name !== studentName); // 삭제될 학생 제외
-
-            // 4. 통계 재계산
-            const stats = recalculateStats(remainingStudents, questionCount);
-            
-            // 5. 메인 리포트 갱신 (트랜잭션에 포함)
-            transaction.update(reportRef, stats);
-            
-            return stats; // { studentCount, classAverage, answerRates }
-
+        const subjects = [];
+        const subjectsRef = collection(db, 'subjects');
+        const querySnapshot = await getDocs(subjectsRef);
+        
+        querySnapshot.forEach(doc => {
+            subjects.push({
+                id: doc.id,
+                ...doc.data()
+            });
         });
         
-        return newStats; // { studentCount, classAverage, answerRates }
-
+        console.log("과목 목록 로드 성공:", subjects.length, "개");
+        return subjects.sort((a, b) => a.label.localeCompare(b.label)); // 가나다순 정렬
+        
     } catch (error) {
-        console.error("학생 삭제 트랜잭E-C 션 실패:", error);
-        throw new Error(`학생 데이터 삭제 중 오류: ${error.message}`);
+        console.error("과목 목록 로드 중 Firestore 오류:", error);
+        throw new Error("과목 목록 로드 중 오류 발생: " + error.message);
     }
 };
-
 
 /**
- * ⭐️ [신규] 학생 1명 추가
+ * ⭐️ [신규] 'subjects' 컬렉션에 새 과목을 추가(또는 덮어쓰기)합니다.
  */
-export const addStudentToReport = async (reportId, newStudent) => {
-    const reportRef = doc(db, 'reports', reportId);
-    const newStudentRef = doc(reportRef, 'students', newStudent.name);
-
+export const saveSubject = async (subjectId, label, examplesText) => {
     try {
-        const newStats = await runTransaction(db, async (transaction) => {
-            // 1. 메인 리포트 정보 (문항 수) 가져오기
-            const reportSnap = await transaction.get(reportRef);
-            if (!reportSnap.exists()) throw new Error("리포트 문서를 찾을 수 없습니다.");
-            const questionCount = reportSnap.data().questionCount;
-
-            // 2. [검증] 이미 존재하는 학생인지 확인
-            const existingStudentSnap = await transaction.get(newStudentRef);
-            if (existingStudentSnap.exists()) {
-                throw new Error(`'${newStudent.name}' 학생은 이미 존재합니다.`);
-            }
-
-            // 3. [읽기] 기존 학생 전체 목록 가져오기 (트랜잭션 밖에서 읽어와야 함)
-            const studentsCollectionRef = collection(reportRef, 'students');
-            const allStudentsSnap = await getDocs(studentsCollectionRef);
-            const existingStudents = allStudentsSnap.docs.map(d => d.data());
+        // 1. 텍스트를 배열로 변환 (빈 줄 제거)
+        const prompt_examples = examplesText
+            .split('\n')
+            .map(line => line.trim())
+            .filter(line => line.length > 0);
             
-            // 4. [계산] 새 학생 목록 생성 및 통계 재계산
-            const allStudentsData = [...existingStudents, newStudent];
-            const stats = recalculateStats(allStudentsData, questionCount);
+        if (prompt_examples.length === 0) {
+            throw new Error("유형 예시를 1개 이상 입력해야 합니다.");
+        }
+        
+        // 2. 문서 ID가 없으면 'label'을 기반으로 자동 생성, 있으면 해당 ID 사용
+        const docId = subjectId || label.replace(/\s+/g, '_').toLowerCase();
+        const subjectRef = doc(db, 'subjects', docId);
 
-            // 5. [쓰기 1] 새 학생 문서 추가
-            transaction.set(newStudentRef, newStudent);
-
-            // 6. [쓰기 2] 메인 리포트 통계 갱신
-            transaction.update(reportRef, stats);
-
-            return stats; // { studentCount, classAverage, answerRates }
+        // 3. 데이터 저장
+        await setDoc(subjectRef, {
+            label: label,
+            prompt_examples: prompt_examples
         });
-
-        return newStats;
+        
+        console.log(`과목 저장 성공: ${docId}`);
+        return { id: docId, label, prompt_examples }; // 새 객체 반환
 
     } catch (error) {
-        console.error("학생 추가 트랜잭션 실패:", error);
-        throw new Error(`학생 데이터 추가 중 오류: ${error.message}`);
+        console.error("과목 저장 중 오류:", error);
+        throw new Error("과목 저장 중 오류 발생: " + error.message);
     }
 };
 
-// --- ⭐️ [신규/수정] 영역 끝 ---
+/**
+ * ⭐️ [신규] 'subjects' 컬렉션에서 과목을 삭제합니다.
+ */
+export const deleteSubject = async (subjectId) => {
+    if (!subjectId) throw new Error("subjectId가 필요합니다.");
+    
+    try {
+        const subjectRef = doc(db, 'subjects', subjectId);
+        await deleteDoc(subjectRef);
+        console.log(`과목 삭제 성공: ${subjectId}`);
+    } catch (error) {
+        console.error("과목 삭제 중 오류:", error);
+        throw new Error("과목 삭제 중 오류 발생: " + error.message);
+    }
+};

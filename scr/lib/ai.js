@@ -7,23 +7,23 @@ const functions = getFunctions(db.app);
 const callGeminiAPIFunction = httpsCallable(functions, 'callGeminiAPI');
 
 
+// ⭐️ [수정] AI 응답 파싱 함수 (안정성 강화)
 function parseAIResponse(response) {
+    let jsonString = response.trim();
+    
+    // 1. AI가 마크다운 블록(```json ... ```)을 포함한 경우 제거
+    const match = jsonString.match(/```json([\s\S]*?)```/);
+    if (match && match[1]) {
+        jsonString = match[1].trim();
+    }
+    
+    // 2. JSON 파싱 시도
     try {
-        return JSON.parse(response);
+        return JSON.parse(jsonString);
     } catch (e) {
-        const match = response.match(/```json([\s\S]*?)```/);
-        if (match) {
-             try { 
-                 return JSON.parse(match[1]); 
-             } catch (e2) { 
-                 console.error("Failed to parse JSON from AI markdown block:", e2); 
-             }
-        }
-        console.error("Failed to parse direct AI response as JSON:", e);
-        if(response.includes("error")) { 
-            throw new Error("AI API 호출 중 오류가 발생했습니다. (백엔드 함수 확인 필요)"); 
-        }
-        throw new Error("AI가 유효하지 않은 형식으로 응답했습니다.");
+        console.error("Failed to parse AI response as JSON:", e);
+        console.error("Problematic JSON string:", jsonString); // ⭐️ 파싱 실패한 문자열 로깅
+        throw new Error("AI가 유효하지 않은 JSON 형식으로 응답했습니다.");
     }
 }
 
@@ -46,7 +46,7 @@ async function callGeminiAPI(prompt) {
             throw new Error("AI(Cloud Function)로부터 유효한 응답 텍스트를 받지 못했습니다.");
         }
         
-        return parseAIResponse(responseText); 
+        return parseAIResponse(responseText); // ⭐️ 수정된 파서 사용
 
     } catch (error) {
         console.error("Firebase Function 호출 오류:", error);
@@ -57,11 +57,10 @@ async function callGeminiAPI(prompt) {
 }
 
 // -------------------------------------------------------------------
-// ⭐️ [삭제] 하드코딩된 getDifficulty 함수 제거
+// (getDifficulty 함수는 삭제된 상태 유지)
 // -------------------------------------------------------------------
 
-
-// ⭐️ [수정] 학생 개별 분석 (하드코딩 난이도 제거)
+// (getAIAnalysis 함수는 변경 없음)
 export async function getAIAnalysis(student, data, selectedClass, questionUnitMap) {
     const incorrectAnswers = student.answers.filter(a => !a.isCorrect);
     if (incorrectAnswers.length === 0) {
@@ -73,7 +72,6 @@ export async function getAIAnalysis(student, data, selectedClass, questionUnitMa
         });
     }
 
-    // ⭐️ [수정] AI가 분석한 난이도를 questionUnitMap에서 가져오도록 수정
     const unitMap = new Map();
     const difficultyMap = new Map();
     if (questionUnitMap && questionUnitMap.question_units) {
@@ -87,7 +85,6 @@ export async function getAIAnalysis(student, data, selectedClass, questionUnitMa
 
     const incorrectInfoForAI = incorrectAnswers.map(ans => ({
         qNum: ans.qNum,
-        // ⭐️ [수정] 하드코딩된 getDifficulty 대신 AI가 분석한 난이도를 사용
         difficulty: difficultyMap.get(ans.qNum) || '분석 안됨'
     }));
     
@@ -124,7 +121,7 @@ export async function getAIAnalysis(student, data, selectedClass, questionUnitMa
     return callGeminiAPI(prompt);
 }
 
-// (반 전체 분석 - 변경 없음)
+// (getOverallAIAnalysis 함수는 변경 없음)
 export async function getOverallAIAnalysis(data) {
     const highErrorRateQuestions = [];
     data.answerRates.forEach((rate, i) => {
@@ -175,8 +172,47 @@ export async function getOverallAIAnalysis(data) {
     return callGeminiAPI(prompt);
 }
 
-// ⭐️ [수정] 단원 매핑 (프롬프트 수정)
-export async function getQuestionUnitMapping(data) {
+// ⭐️ [수정] 단원 매핑 (프롬프트 동적 생성)
+export async function getQuestionUnitMapping(data, subjectKey) {
+    
+    // ⭐️ [신규] 과목 키(subjectKey)에 따라 예시를 동적으로 선택
+    const subjectKeyToExamples = {
+        'MID_3': [
+            "유형 01: 삼각비의 뜻",
+            "유형 02: 특수한 각의 삼각비의 값",
+            "유형 05: 이차함수의 최댓값과 최솟값",
+            "유형 08: 피타고라스 정리의 활용",
+            "유형 10: 원주각의 성질",
+            "유형 15: 표준편차와 분산"
+        ],
+        'HIGH_1_1': [
+            "유형 01: 다항식의 덧셈과 뺄셈",
+            "유형 03: 곱셈 공식",
+            "유형 05: 나머지정리",
+            "유형 08: 이차방정식의 근과 계수의 관계",
+            "유형 12: 이차함수와 직선의 위치 관계"
+        ],
+        'HIGH_1_2': [
+            "유형 01: 두 점 사이의 거리",
+            "유형 05: 선분의 길이의 제곱의 합의 최솟값",
+            "유형 08: x, y축에 동시에 접하는 원의 방정식",
+            "유형 10: 집합의 연산법칙",
+            "유형 15: 절대부등식"
+        ],
+        'HIGH_1_MIXED': [ // 고1 혼합
+            "유형 01: 두 점 사이의 거리",
+            "유형 03: 나머지정리",
+            "유형 08: x, y축에 동시에 접하는 원의 방정식",
+            "유형 12: 이차함수와 직선의 위치 관계",
+            "유형 15: 절대부등식"
+        ]
+        // (나중에 여기에 'HIGH_2_SU1' 등을 추가하면 됨)
+    };
+
+    // ⭐️ [신규] 선택된 과목의 예시를 가져오거나, 없으면 기본(혼합) 예시 사용
+    let examples = subjectKeyToExamples[subjectKey] || subjectKeyToExamples['HIGH_1_MIXED'];
+    const examplesString = examples.map(ex => `- "${ex}"`).join('\n');
+
     const prompt = `
         다음은 시험지 전체 텍스트입니다. 1번부터 ${data.questionCount}번까지 각 문항이 다루는 **(1)가장 세부적인 '문제 유형명'**과 **(2)난이도**를 분석하여 찾아주세요.
 
@@ -193,11 +229,7 @@ export async function getQuestionUnitMapping(data) {
         - '쉬움', '보통', '어려움'을 사용하지 마세요.
         
         [좋은 예시 - 유형명]
-        - "유형 01: 두 점 사이의 거리"
-        - "유형 05: 선분의 길이의 제곱의 합의 최솟값"
-        - "유형 08: x, y축에 동시에 접하는 원의 방정식"
-        - "유형 11: 삼각비의 값을 이용한 식의 계산"
-        - "유형 15: 표준편차와 분산의 관계"
+        ${examplesString}
 
         [좋은 예시 - 난이도]
         - "A" (가장 쉬운 유형, 기본 문제)
@@ -207,8 +239,8 @@ export async function getQuestionUnitMapping(data) {
         **결과는 반드시 다음 JSON 형식으로만 반환해주세요. 설명이나 다른 텍스트는 포함하지 마세요:**
         {
             "question_units": [
-                { "qNum": 1, "unit": "유형 01: 집합의 뜻과 표현", "difficulty": "A" },
-                { "qNum": 2, "unit": "유형 03: 두 점 사이의 거리", "difficulty": "B-" },
+                { "qNum": 1, "unit": "유형 01: ...", "difficulty": "A" },
+                { "qNum": 2, "unit": "유형 02: ...", "difficulty": "B-" },
                 { "qNum": ${data.questionCount}, "unit": "...", "difficulty": "C" }
             ]
         }

@@ -9,8 +9,8 @@ import pLimit from 'p-limit';
 
 const limit = pLimit(5); 
 
-// --- [기존] '파일 업로드' 모드를 위한 배치 함수 (변경 없음) ---
-async function processClassBatch(className, classFiles, uploadDate, setErrorMessage) {
+// ⭐️ [수정] 'subjectKey' 인자 추가
+async function processClassBatch(className, classFiles, uploadDate, setErrorMessage, subjectKey) {
     const { pdf, spreadsheet } = classFiles;
 
     setErrorMessage(`'${className}' 파일 파싱 중...`);
@@ -35,7 +35,8 @@ async function processClassBatch(className, classFiles, uploadDate, setErrorMess
     
     const [aiOverall, unitMap] = await Promise.all([
         getOverallAIAnalysis(commonData), 
-        getQuestionUnitMapping(commonData) 
+        // ⭐️ [수정] 'subjectKey' 전달
+        getQuestionUnitMapping(commonData, subjectKey) 
     ]);
 
     const finalCommonData = {
@@ -57,19 +58,14 @@ async function processClassBatch(className, classFiles, uploadDate, setErrorMess
 }
 
 
-// --- ⭐️ [신규] '직접 입력' 모드를 위한 배치 함수 ---
-async function processDirectInputBatch(className, pdfFile, directStudents, uploadDate, setErrorMessage) {
+// ⭐️ [수정] 'subjectKey' 인자 추가
+async function processDirectInputBatch(className, pdfFile, directStudents, uploadDate, setErrorMessage, subjectKey) {
     
     setErrorMessage(`'${className}' PDF 파싱 및 데이터 처리 중...`);
     
-    // 1. PDF 파싱
     const pdfText = await parsePDF(pdfFile);
-    
-    // 2. '직접 입력' 데이터를 'fileParser'로 전달하여 통계 계산
-    // (App.jsx에서 'fileParser'가 이해하는 형식으로 데이터를 만들었기 때문에 재사용 가능)
     const studentData = processStudentData(directStudents);
 
-    // 3. AI 분석용 공통 데이터 생성
     const commonData = {
         pdfInfo: { fileName: pdfFile.name, fullText: pdfText },
         classAverage: studentData.classAverage,
@@ -82,13 +78,12 @@ async function processDirectInputBatch(className, pdfFile, directStudents, uploa
     console.log(`[${className}] Step 1/2: 공통 분석 (총평, 단원맵) 병렬 시작...`);
     setErrorMessage(`'${className}' AI 공통 분석 중... (1/2)`);
     
-    // 4. AI 분석 호출
     const [aiOverall, unitMap] = await Promise.all([
         getOverallAIAnalysis(commonData), 
-        getQuestionUnitMapping(commonData) 
+        // ⭐️ [수정] 'subjectKey' 전달
+        getQuestionUnitMapping(commonData, subjectKey) 
     ]);
 
-    // 5. 최종 데이터 정리
     const finalCommonData = {
         pdfInfo: commonData.pdfInfo,
         aiOverallAnalysis: aiOverall,
@@ -109,18 +104,16 @@ async function processDirectInputBatch(className, pdfFile, directStudents, uploa
 
 
 // --- ⭐️ [수정] useFileProcessor 훅 ---
-export const useFileProcessor = () => { // ⭐️ props 제거
+export const useFileProcessor = () => { 
     const { 
         setProcessing, setErrorMessage, 
         setReportSummaries,
         setCurrentPage, uploadDate, setSelectedDate,
         currentTeacher, 
-        // ⭐️ [신규] App.jsx의 'selectedFiles' 상태를 직접 가져옴
         selectedFiles, setSelectedFiles
     } = useReportContext();
     
     const fileInputRef = useRef(null);
-    // ⭐️ [수정] 'selectedFiles' 상태는 이제 Context에서 관리
 
     const handleFileChange = (e) => {
         if (e.target.files) {
@@ -136,8 +129,8 @@ export const useFileProcessor = () => { // ⭐️ props 제거
         }
     };
 
-    // ⭐️ [수정] 'handleFileProcess'가 App.jsx에서 인자를 받도록 변경
-    const handleFileProcess = useCallback(async (inputType, directInput) => {
+    // ⭐️ [수정] 'subjectKey' 인자 추가
+    const handleFileProcess = useCallback(async (inputType, directInput, subjectKey) => {
         if (!currentTeacher) { 
             setErrorMessage('로그인이 필요합니다. 앱을 새로고침하여 다시 로그인해주세요.');
             return;
@@ -147,7 +140,6 @@ export const useFileProcessor = () => { // ⭐️ props 제거
             return;
         }
         
-        // 1. PDF 파일은 항상 필수
         const pdfFile = selectedFiles.find(f => f.name.toLowerCase().endsWith('.pdf'));
         if (!pdfFile) {
             setErrorMessage('PDF 시험지 파일을 찾을 수 없습니다. (필수)');
@@ -177,7 +169,8 @@ export const useFileProcessor = () => { // ⭐️ props 제거
                             className, 
                             pairedFiles[className], 
                             uploadDate,
-                            setErrorMessage 
+                            setErrorMessage,
+                            subjectKey // ⭐️ 전달
                         );
                         
                         setErrorMessage(`'${className}' 분석 완료! DB에 저장 중...`);
@@ -203,13 +196,13 @@ export const useFileProcessor = () => { // ⭐️ props 제거
 
                 console.log(`--- [${className}] (직접 입력) AI 공통 분석 시작 ---`);
                 
-                // ⭐️ [신규] '직접 입력'용 배치 함수 호출
                 const { studentData, commonData } = await processDirectInputBatch(
                     className,
                     pdfFile,
                     students,
                     uploadDate,
-                    setErrorMessage
+                    setErrorMessage,
+                    subjectKey // ⭐️ 전달
                 );
 
                 setErrorMessage(`'${className}' 분석 완료! DB에 저장 중...`);
@@ -222,7 +215,6 @@ export const useFileProcessor = () => { // ⭐️ props 제거
                 newSummaries.push({ id: reportId, className, date: uploadDate, studentCount: studentData.studentCount });
             }
             
-            // --- 3. 공통 완료 로직 ---
             setErrorMessage('모든 분석 완료!');
             setReportSummaries(prevSummaries => [...prevSummaries, ...newSummaries]);
             setErrorMessage(''); 
@@ -235,14 +227,12 @@ export const useFileProcessor = () => { // ⭐️ props 제거
             hasError = true;
         } finally {
             setProcessing(false);
-            // ⭐️ '파일' 모드였을 때만 파일 목록 초기화
             if (inputType === 'file') { 
                 setSelectedFiles([]);
                 if(fileInputRef.current) fileInputRef.current.value = "";
             }
         }
     }, [
-        // ⭐️ [수정] 의존성 배열 변경
         currentTeacher, uploadDate, selectedFiles, 
         setProcessing, setErrorMessage, setReportSummaries, 
         setCurrentPage, setSelectedDate, setSelectedFiles

@@ -31,8 +31,10 @@ export const ReportProvider = ({ children }) => {
     const [uploadDate, setUploadDate] = useState('');
     const [activeChart, setActiveChart] = useState(null);
 
-    // ⭐️ [신규] 'selectedFiles' 상태를 Context로 이동
     const [selectedFiles, setSelectedFiles] = useState([]);
+    
+    // ⭐️ [제거] 과목 목록 상태
+    // const [subjects, setSubjects] = useState([]);
 
     const showPage = (pageName) => {
         setErrorMessage(''); 
@@ -72,8 +74,9 @@ export const ReportProvider = ({ children }) => {
         
         activeChart, setActiveChart,
 
-        // ⭐️ [신규] Context를 통해 'selectedFiles' 제공
         selectedFiles, setSelectedFiles
+        
+        // ⭐️ [제거] Context에서 'subjects' 제공 제거
     };
 
     return (
