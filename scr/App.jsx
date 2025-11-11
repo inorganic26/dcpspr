@@ -9,7 +9,6 @@ import {
     addStudentToReport
     // ⭐️ [제거] 과목 관리 함수 임포트 제거
 } from './hooks/useFirebase';
-
 // ⭐️ [수정] fileParser.js에서 processStudentData 함수 임포트
 import { processStudentData } from './lib/fileParser'; 
 
@@ -39,8 +38,8 @@ const Page1_Upload = ({ handleFileChange, handleFileProcess, fileInputRef, selec
     const [directStudents, setDirectStudents] = useState([]);
     const [directForm, setDirectForm] = useState({ name: '', score: '', answers: '' });
     
-    // ⭐️ [신규] 선택된 과목(시험 범위) 상태
-    const [selectedSubjectKey, setSelectedSubjectKey] = useState('HIGH_1_MIXED'); // ⭐️ 기본값 설정
+    // ⭐️ [신규] 선택된 과목(시험 범위) 상태 (기본값을 "선택안함" "")
+    const [selectedSubjectKey, setSelectedSubjectKey] = useState(''); 
 
     // ⭐️ [신규] 하드코딩된 과목 목록
     const subjectOptions = [
@@ -48,7 +47,9 @@ const Page1_Upload = ({ handleFileChange, handleFileProcess, fileInputRef, selec
         { key: 'HIGH_1_1', label: '고1 공통수학 1' },
         { key: 'HIGH_1_2', label: '고1 공통수학 2' },
         { key: 'HIGH_1_MIXED', label: '고1 혼합 (공통수학 1+2)' },
-        // (나중에 여기에 'HIGH_2_SU1', '고2 수1' 등을 추가하면 됨)
+        { key: 'HIGH_2_SU1', label: '고2 수1' },
+        { key: 'HIGH_2_SU2', label: '고2 수2' },
+        { key: 'HIGH_2_DAESU', label: '고2 대수 (수1+수2)' },
     ];
 
     const handleDragOver = (e) => { e.preventDefault(); e.stopPropagation(); if (!isDragging) setIsDragging(true); };
@@ -126,12 +127,12 @@ const Page1_Upload = ({ handleFileChange, handleFileProcess, fileInputRef, selec
 
     // --- ⭐️ [수정] '분석 시작하기' 버튼 클릭 핸들러 ---
     const onProcessStart = () => {
+        // ⭐️ [수정] 'selectedSubjectKey' 전달
         if (!selectedSubjectKey) {
             setErrorMessage('시험 범위를 선택해야 AI가 정확한 유형을 분석할 수 있습니다.');
             return;
         }
         
-        // ⭐️ [수정] 'selectedSubjectKey' 전달
         handleFileProcess(inputType, {
             className: directClassName,
             students: directStudents,
@@ -154,6 +155,7 @@ const Page1_Upload = ({ handleFileChange, handleFileProcess, fileInputRef, selec
                             onChange={(e) => setSelectedSubjectKey(e.target.value)}
                     >
                         {/* ⭐️ [수정] 하드코딩된 목록 */}
+                        <option value="" disabled>-- 시험 범위를 선택하세요 --</option>
                         {subjectOptions.map(subject => (
                             <option key={subject.key} value={subject.key}>
                                 {subject.label}
@@ -271,11 +273,10 @@ const Page1_Upload = ({ handleFileChange, handleFileProcess, fileInputRef, selec
                 </div>
             )}
 
-
             {errorMessage && ( <div id="error-message" className="text-red-600 bg-red-100 p-3 rounded-lg mb-4 text-sm" dangerouslySetInnerHTML={{ __html: errorMessage.replace(/\n/g, '<br>') }} /> )}
             
             <button id="processBtn" className="btn btn-primary w-full text-lg" 
-                    disabled={processing} // ⭐️ isMigrating 제거
+                    disabled={processing}
                     onClick={onProcessStart}>
                 {processing && <span id="loader" className="spinner" style={{ borderColor: 'white', borderBottomColor: 'transparent', width: '20px', height: '20px', marginRight: '8px' }}></span>}
                 <span>{processing ? '분석 중...' : '분석 시작하기'}</span>
@@ -404,18 +405,17 @@ const AddStudentModal = ({ isOpen, onClose, onSubmit, questionCount, setErrorMes
             return;
         }
 
-        // ⭐️ [수정] 'fileParser'가 이해하는 "원본" 객체 생성
         const rawStudent = {
             "이름": name,
             "총점": parseFloat(score),
         };
         
         answerArray.forEach((ans, index) => {
-            rawStudent[index + 1] = ans; // "1": "O", "2": "X"
+            rawStudent[index + 1] = ans; 
         });
 
-        onSubmit(rawStudent); // ⭐️ App.jsx의 핸들러로 "원본" 학생 객체 전달
-        onClose(); // 모달 닫기
+        onSubmit(rawStudent); 
+        onClose(); 
     };
 
     return (
@@ -468,7 +468,7 @@ const Page4_ReportSelect = ({ handleDeleteStudent, selectedClass, selectedDate, 
             <AddStudentModal
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
-                onSubmit={handleAddStudent} // ⭐️ App.jsx의 handleAddStudent 전달
+                onSubmit={handleAddStudent} 
                 questionCount={questionCount}
                 setErrorMessage={setErrorMessage} 
             />
