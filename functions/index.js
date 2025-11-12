@@ -6,7 +6,8 @@ const fetch = require("node-fetch");
 
 // 1. 등록한 비밀 API 키를 불러옵니다.
 const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
-const GEMINI_MODEL = "gemini-1.5-flash"; // ⭐️ 1.5-flash로 모델 변경 (성능 향상)
+// ⭐️ [수정] 모델을 원래 사용하시던 'gemini-2.5-flash'로 정확하게 수정
+const GEMINI_MODEL = "gemini-2.5-flash"; 
 
 /**
  * 프론트엔드(React)에서 호출할 Cloud Function
@@ -35,8 +36,7 @@ exports.callGeminiAPI = onCall({
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: {
-          // ⭐️ [수정] JSON 형식을 강제하면 오히려 오류가 날 수 있으므로,
-          // AI가 텍스트로 JSON 문자열을 반환하도록 이 옵션을 제거합니다.
+          // (JSON 파싱 오류를 방지하기 위해 responseMimeType은 주석 처리 유지)
           // responseMimeType: "application/json", 
           temperature: 0.1,
         },
@@ -53,11 +53,10 @@ exports.callGeminiAPI = onCall({
 
     const data = await response.json();
     
-    // ⭐️ [수정] AI 응답 텍스트 추출 (안전하게)
     const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
     if (!responseText) {
-        console.error("Gemini API Error (Back-end):", data); // ⭐️ 응답 전체를 로깅
+        console.error("Gemini API Error (Back-end):", data); 
         const functions = require("firebase-functions");
         throw new functions.https.HttpsError("internal", "AI로부터 유효한 응답 텍스트를 받지 못했습니다. (candidates 또는 text 없음)");
     }
@@ -67,7 +66,7 @@ exports.callGeminiAPI = onCall({
 
   } catch (error) {
     console.error("Cloud Function Error:", error);
-    if (error.code) { // HttpsError는 code 속성을 가짐
+    if (error.code) { 
       throw error;
     }
     const functions = require("firebase-functions");

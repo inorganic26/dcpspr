@@ -172,46 +172,78 @@ export async function getOverallAIAnalysis(data) {
     return callGeminiAPI(prompt);
 }
 
-// ⭐️ [수정] 단원 매핑 (프롬프트 동적 생성)
+
+// ⭐️ [수정] 'HIGH_2_SU1', 'HIGH_2_SU2' 예시 추가
+const subjectKeyToExamples = {
+    'MID_3': [
+        "유형 01: 삼각비의 뜻",
+        "유형 02: 특수한 각의 삼각비의 값",
+        "유형 05: 이차함수의 최댓값과 최솟값",
+        "유형 08: 피타고라스 정리의 활용",
+        "유형 10: 원주각의 성질",
+        "유형 15: 표준편차와 분산"
+    ],
+    'HIGH_1_1': [
+        "유형 01: 다항식의 덧셈과 뺄셈",
+        "유형 03: 곱셈 공식",
+        "유형 05: 나머지정리",
+        "유형 08: 이차방정식의 근과 계수의 관계",
+        "유형 12: 이차함수와 직선의 위치 관계"
+    ],
+    'HIGH_1_2': [
+        "유형 01: 두 점 사이의 거리",
+        "유형 05: 선분의 길이의 제곱의 합의 최솟값",
+        "유형 08: x, y축에 동시에 접하는 원의 방정식",
+        "유형 10: 집합의 연산법칙",
+        "유형 15: 절대부등식"
+    ],
+    'HIGH_1_MIXED': [
+        "유형 01: 두 점 사이의 거리",
+        "유형 03: 나머지정리",
+        "유형 08: x, y축에 동시에 접하는 원의 방정식",
+        "유형 12: 이차함수와 직선의 위치 관계",
+        "유형 15: 절대부등식"
+    ],
+    'HIGH_2_SU1': [ // ⭐️ (신규) 고2 수1 예시
+        "유형 01: 지수법칙",
+        "유형 03: 로그의 성질",
+        "유형 05: 삼각함수의 정의",
+        "유형 08: 등차수열의 일반항"
+    ],
+    'HIGH_2_SU2': [ // ⭐️ (신규) 고2 수2 예시
+        "유형 01: 함수의 극한",
+        "유형 02: 함수의 연속",
+        "유형 05: 미분계수",
+        "유형 07: 도함수의 활용 (접선)",
+        "유형 10: 함수의 증가와 감소",
+        "유형 12: 부정적분",
+        "유형 15: 정적분의 계산"
+    ],
+    'HIGH_2_DAESU': [ // ⭐️ (신규) 고2 대수(수1+수2) 예시
+        "유형 01: 지수법칙",
+        "유형 03: 로그의 성질",
+        "유형 05: 삼각함수의 정의",
+        "유형 10: 함수의 극한",
+        "유형 12: 미분계수",
+        "유형 15: 부정적분"
+    ]
+};
+
+// ⭐️ [신규] 예시를 가져오는 헬퍼 함수
+function getExamples(subjectKey) {
+    let examples = subjectKeyToExamples[subjectKey];
+    if (!examples || examples.length === 0) {
+        console.warn(`getQuestionUnitMapping: '${subjectKey}'에 대한 예시가 없어 기본 예시를 사용합니다.`);
+        // ⭐️ [수정] 기본값을 'HIGH_1_MIXED'로 변경
+        examples = subjectKeyToExamples['HIGH_1_MIXED'];
+    }
+    return examples.map(ex => `- "${ex}"`).join('\n');
+}
+
+// ⭐️ [수정] 단원 매핑 (유형명 + 난이도 동시 요청)
 export async function getQuestionUnitMapping(data, subjectKey) {
     
-    // ⭐️ [신규] 과목 키(subjectKey)에 따라 예시를 동적으로 선택
-    const subjectKeyToExamples = {
-        'MID_3': [
-            "유형 01: 삼각비의 뜻",
-            "유형 02: 특수한 각의 삼각비의 값",
-            "유형 05: 이차함수의 최댓값과 최솟값",
-            "유형 08: 피타고라스 정리의 활용",
-            "유형 10: 원주각의 성질",
-            "유형 15: 표준편차와 분산"
-        ],
-        'HIGH_1_1': [
-            "유형 01: 다항식의 덧셈과 뺄셈",
-            "유형 03: 곱셈 공식",
-            "유형 05: 나머지정리",
-            "유형 08: 이차방정식의 근과 계수의 관계",
-            "유형 12: 이차함수와 직선의 위치 관계"
-        ],
-        'HIGH_1_2': [
-            "유형 01: 두 점 사이의 거리",
-            "유형 05: 선분의 길이의 제곱의 합의 최솟값",
-            "유형 08: x, y축에 동시에 접하는 원의 방정식",
-            "유형 10: 집합의 연산법칙",
-            "유형 15: 절대부등식"
-        ],
-        'HIGH_1_MIXED': [ // 고1 혼합
-            "유형 01: 두 점 사이의 거리",
-            "유형 03: 나머지정리",
-            "유형 08: x, y축에 동시에 접하는 원의 방정식",
-            "유형 12: 이차함수와 직선의 위치 관계",
-            "유형 15: 절대부등식"
-        ]
-        // (나중에 여기에 'HIGH_2_SU1' 등을 추가하면 됨)
-    };
-
-    // ⭐️ [신규] 선택된 과목의 예시를 가져오거나, 없으면 기본(혼합) 예시 사용
-    let examples = subjectKeyToExamples[subjectKey] || subjectKeyToExamples['HIGH_1_MIXED'];
-    const examplesString = examples.map(ex => `- "${ex}"`).join('\n');
+    const examplesString = getExamples(subjectKey);
 
     const prompt = `
         다음은 시험지 전체 텍스트입니다. 1번부터 ${data.questionCount}번까지 각 문항이 다루는 **(1)가장 세부적인 '문제 유형명'**과 **(2)난이도**를 분석하여 찾아주세요.
@@ -247,3 +279,5 @@ export async function getQuestionUnitMapping(data, subjectKey) {
     `; 
     return callGeminiAPI(prompt);
 }
+
+// ⭐️ [제거] 'getQuestionDifficultyMapping' 함수는 사용하지 않음
