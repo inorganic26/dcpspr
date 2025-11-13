@@ -121,7 +121,7 @@ function addWrappedText(pdf, text, yPos, options = {}) {
 }
 
 /**
- * '주요 특징' 섹션을 그립니다. (여백 버그 수정)
+ * ⭐️ [수정] 3개의 박스로 구성된 '주요 특징' 섹션을 그립니다. (여백 버그 수정)
  */
 function addFeaturesSection(pdf, data, yPos) {
     if (!data || !data.students) { 
@@ -145,11 +145,12 @@ function addFeaturesSection(pdf, data, yPos) {
         if (rate <= 40) highErrorRateQuestions.push({ qNum: i + 1, rate: rate });
     });
 
+    // --- ⭐️ [수정] 높이 계산 로직 (여백 버그 수정) ---
     const boxWidth = 58;
     const boxMargin = 7.5;
     const startX = 15;
-    const minBoxHeight = 25; 
-    const maxBoxHeight = 55; 
+    const minBoxHeight = 25; // 최소 높이
+    const maxBoxHeight = 55; // ⭐️ 최대 높이 55mm (5.5cm)로 설정
     
     const topPadding = 6;
     const textPadding = 2;
@@ -166,25 +167,31 @@ function addFeaturesSection(pdf, data, yPos) {
         return (lines.length * fontSize * 0.352778 * lineSpacing);
     };
     
+    // 1. 점수 분포 (파란색) 높이 계산
     const scoreText = `최고 ${maxScore}점, 최저 ${minScore}점, 평균 ${classAverage}점`;
     const scoreTextHeight = calcTextHeight(scoreText, 10, 1.6, boxWidth - 10);
     const scoreBoxHeight = topPadding + titleHeight + textPadding + scoreTextHeight + bottomPadding;
 
+    // 2. 전원 정답 (녹색) 높이 계산
     const correctText = allCorrectQuestions.length > 0 ? allCorrectQuestions.map(q => `${q}번`).join(', ') : '없음';
     const correctTextHeight = calcTextHeight(correctText, 10, 1.6, boxWidth - 10);
     const correctBoxHeight = topPadding + titleHeight + textPadding + correctTextHeight + bottomPadding;
 
+    // 3. 오답 문항 (붉은색) 높이 계산
     const errorText = highErrorRateQuestions.length > 0 
         ? highErrorRateQuestions.map(q => `${q.qNum}번 (${q.rate}%)`).join(', ') 
         : '없음';
     const errorTextHeight = calcTextHeight(errorText, 9, 1.6, boxWidth - 10);
     const errorBoxHeight = topPadding + titleHeight + textPadding + errorTextHeight + bottomPadding;
 
+    // 4. 3개 높이 중 가장 큰 값을 선택하되, 최소/최대 높이 적용
     let boxHeight = Math.max(scoreBoxHeight, correctBoxHeight, errorBoxHeight);
     boxHeight = Math.max(minBoxHeight, Math.min(boxHeight, maxBoxHeight));
+    // --- ⭐️ [수정] 높이 계산 로직 완료 ---
 
     pdf.setLineWidth(0.5);
 
+    // ⭐️ [신규] 텍스트 시작 Y 좌표 계산
     const titleStartY = yPos + topPadding + (11 * 0.352778); 
     const textStartY = yPos + topPadding + titleHeight + textPadding + (10 * 0.352778); 
     const errorTextStartY = yPos + topPadding + titleHeight + textPadding + (9 * 0.352778); 
@@ -366,42 +373,61 @@ export const useChartAndPDF = () => {
         button.textContent = '저장 중...';
         button.disabled = true;
         
-        let currentActiveChart = chartInstanceRef.current;
+        let chartImgData = null; 
         
-        if (!currentActiveChart) {
-             const chartCanvas = document.getElementById('scoreChart');
-             const data = currentReportData; 
-             if (chartCanvas && data?.students) { 
-                 button.textContent = '차트 준비 중...'; 
-                 console.warn('PDF 저장 전 차트 강제 렌더링 실행 (ref is null)');
-                
-                 const existingChart = Chart.getChart(chartCanvas);
-                 if (existingChart) existingChart.destroy();
-                
-                 const studentForChart = data.students.find(s => s.name === selectedStudent) || null;
-                 
-                 const studentDataForChart = {
-                     students: data.students,
-                     classAverage: data.classAverage,
-                 };
+        // ⭐️ [수정] 타이밍 문제 해결 (애니메이션 끄고 강제 렌더링)
+        const chartCanvas = document.getElementById('scoreChart');
+        const data = currentReportData; 
+        
+        if (chartCanvas && data?.students) { 
+            button.textContent = '차트 준비 중...'; 
+            console.log('PDF 저장: 차트 강제 렌더링 시작...');
+            
+            const existingChart = Chart.getChart(chartCanvas);
+            if (existingChart) existingChart.destroy();
+            
+            const studentForChart = data.students.find(s => s.name === selectedStudent) || null;
+            
+            const studentDataForChart = {
+                students: data.students,
+                classAverage: data.classAverage,
+            };
 
-                 const newChart = renderScoreChart(
-                    chartCanvas, 
-                    studentDataForChart, 
-                    studentForChart,
-                    false // ⭐️ animation: false
-                 );
-                 
-                 if (newChart) {
-                    await newChart.draw(); 
-                    console.log("강제 렌더링 완료.");
+            // 1. 애니메이션 없이 차트 생성
+            const newChart = renderScoreChart(
+                chartCanvas, 
+                studentDataForChart, 
+                studentForChart,
+                false // ⭐️ animation: false
+            );
+            
+            // 2. 차트 캡처
+            if (newChart) {
+                try {
+                    // ⭐️ 애니메이션이 없으므로, 그리기가 완료된 후 바로 캡처
+                    chartImgData = newChart.toBase64Image('image/png', 1.0);
+                    console.log("강제 렌더링 및 캡처 완료.");
+                } catch(e) {
+                     console.error('강제 렌더링 중 차트 캡처 실패:', e);
+                     chartImgData = null;
+                }
+                newChart.destroy(); // 임시 차트 제거
+            }
+            
+            // 3. (안전장치) html2canvas fallback
+            if (!chartImgData) {
+                console.warn("toBase64Image 실패, html2canvas fallback 실행");
+                 try {
+                    chartImgData = await html2canvas(chartCanvas, { 
+                        scale: 2, logging: false, useCORS: true, backgroundColor: null 
+                    }).then(canvas => canvas.toDataURL('image/png', 1.0));
+                 } catch (e) {
+                    console.error('html2canvas 캡처 실패:', e);
+                    chartImgData = null;
                  }
-                
-                 currentActiveChart = newChart; 
-                 chartInstanceRef.current = newChart; 
-                 setActiveChart(newChart); 
-             }
+            }
         }
+        // --- ⭐️ 타이밍 문제 수정 완료 ---
         
         button.textContent = '저장 중...';
 
@@ -420,42 +446,21 @@ export const useChartAndPDF = () => {
         const studentName = button.dataset.studentName;
 
         try {
-            const data = currentReportData; 
+            // const data = currentReportData; // (위에서 이미 선언됨)
             if (!data) throw new Error('PDF 생성에 필요한 데이터를 찾을 수 없습니다.');
             
             const student = selectedStudent ? data.students?.find(s => s.name === selectedStudent) : null;
-            const aiOverall = data.aiOverallAnalysis;
-            const aiStudent = student?.aiAnalysis;
+            const aiOverall = data.aiOverallAnalysis; // ⭐️ Flash 총평
+            const aiStudent = student?.aiAnalysis;    // ⭐️ Flash 학생 요약
             
             const cleanText = (text) => text === undefined || text === null ? ' ' : String(text).replace(/\n/g, ' ');
 
-            // ⭐️ [수정] AI 난이도를 가져오기 위한 맵 생성
-            const unitMap = new Map();
-            const difficultyMap = new Map();
-            data.questionUnitMap?.question_units?.forEach(item => {
-                unitMap.set(item.qNum, item.unit);
-                difficultyMap.set(item.qNum, item.difficulty); // ⭐️ AI 난이도 저장
+            // ⭐️ [수정] "마스터 분석표"에서 유형명/난이도 가져오기
+            const masterAnalysisMap = new Map();
+            // ⭐️ Pro Vision의 응답 형식('question_analysis')에 맞춤
+            data.questionUnitMap?.question_analysis?.forEach(item => {
+                masterAnalysisMap.set(item.qNum, item);
             });
-            aiStudent?.incorrect_analysis?.forEach(item => { if (item.unit) unitMap.set(item.qNum, item.unit); });
-
-            let chartImgData = null;
-            const chartCanvas = document.getElementById('scoreChart');
-
-            if (chartCanvas) {
-                try {
-                    if (currentActiveChart && typeof currentActiveChart.toBase64Image === 'function') {
-                        chartImgData = currentActiveChart.toBase64Image('image/png', 1.0);
-                    } else {
-                        console.warn("currentActiveChart(ref)가 없거나 비정상입니다. html2canvas fallback 실행");
-                        chartImgData = await html2canvas(chartCanvas, { 
-                            scale: 2, logging: false, useCORS: true, backgroundColor: null 
-                        }).then(canvas => canvas.toDataURL('image/png', 1.0));
-                    }
-                } catch (e) {
-                    console.error('차트 캡처 실패 (scoreChart):', e);
-                    chartImgData = null; 
-                }
-            }
             
             let yPos = 40; 
 
@@ -505,7 +510,7 @@ export const useChartAndPDF = () => {
                 pdf.addPage();
                 pdf.setFont('NotoSansKR', 'normal'); 
                 addPdfTitle(pdf, `${selectedDate} Weekly Test`, `${selectedClass} / ${student.name} (AI 분석)`);
-                yPos = addPdfSectionTitle(pdf, '🤖 AI 종합 분석', 40);
+                yPos = addPdfSectionTitle(pdf, '🤖 AI 종합 분석 (Flash)', 40);
                 
                 if (yPos > 250) { 
                     pdf.addPage();
@@ -523,19 +528,23 @@ export const useChartAndPDF = () => {
                 pdf.addPage();
                 pdf.setFont('NotoSansKR', 'normal'); 
                 addPdfTitle(pdf, `${selectedDate} Weekly Test`, `${selectedClass} / ${student.name} (문항 정오표)`);
-                yPos = addPdfSectionTitle(pdf, '📋 문항 정오표', 40);
+                yPos = addPdfSectionTitle(pdf, '📋 문항 정오표 (Pro Vision)', 40);
                 
-                const errataBody = student.answers.map((ans, i) => ([
-                    `${ans.qNum}번`,
-                    unitMap.get(ans.qNum) || '',
-                    difficultyMap.get(ans.qNum) || 'N/A', // ⭐️ [수정] AI 난이도 사용
-                    ans.isCorrect ? 'O' : 'X',
-                    `${data.answerRates[i] ?? 'N/A'}%` 
-                ]));
+                // ⭐️ [수정] "마스터 분석표"에서 데이터 가져오기
+                const errataBody = student.answers.map((ans, i) => {
+                    const analysis = masterAnalysisMap.get(ans.qNum);
+                    return [
+                        `${ans.qNum}번`,
+                        analysis?.unit || 'N/A',
+                        analysis?.difficulty || 'N/A',
+                        ans.isCorrect ? 'O' : 'X',
+                        `${data.answerRates[i] ?? 'N/A'}%` 
+                    ];
+                });
                 
                 autoTable(pdf, {
                     startY: yPos,
-                    head: [['문항번호', '세부 개념 유형 (AI 분석)', '난이도 (AI)', '정오', '반 전체 정답률(%)']], // ⭐️ 라벨 수정
+                    head: [['문항번호', '세부 개념 유형 (AI)', '난이도 (AI)', '정오', '반 전체 정답률(%)']],
                     body: errataBody,
                     theme: 'grid',
                     styles: { font: 'NotoSansKR', fontStyle: 'normal', fontSize: 8, cellPadding: 1.5 }, 
@@ -552,23 +561,28 @@ export const useChartAndPDF = () => {
                     }
                 });
 
-                if (aiStudent?.incorrect_analysis?.length > 0) {
+                // ⭐️ [수정] "마스터 분석표"에서 오답 분석 데이터 가져오기
+                const incorrectAnswers = student.answers.filter(a => !a.isCorrect);
+                if (incorrectAnswers.length > 0) {
                     pdf.addPage();
                     pdf.setFont('NotoSansKR', 'normal'); 
                     addPdfTitle(pdf, `${selectedDate} Weekly Test`, `${selectedClass} / ${student.name} (오답 분석)`);
-                    yPos = addPdfSectionTitle(pdf, '🔍 오답 분석 및 대응 방안 (AI 기반)', 40);
+                    yPos = addPdfSectionTitle(pdf, '🔍 오답 분석 및 대응 방안 (Pro Vision)', 40);
                     
-                    const analysisBody = aiStudent.incorrect_analysis.map(item => ([
-                        `${item.qNum}번`,
-                        unitMap.get(item.qNum) || '분석 필요',
-                        difficultyMap.get(item.qNum) || 'N/A', // ⭐️ [수정] AI 난이도 사용
-                        cleanText(item.analysis_point),
-                        cleanText(item.solution)
-                    ]));
+                    const analysisBody = incorrectAnswers.map(ans => {
+                        const analysis = masterAnalysisMap.get(ans.qNum);
+                        return [
+                            `${ans.qNum}번`,
+                            analysis?.unit || 'N/A',
+                            analysis?.difficulty || 'N/A',
+                            cleanText(analysis?.analysis_point || 'N/A'),
+                            cleanText(analysis?.solution || 'N/A')
+                        ];
+                    });
 
                     autoTable(pdf, {
                         startY: yPos,
-                        head: [['문항번호', '세부 개념 유형', '난이도 (AI)', '분석 포인트 (AI)', '대응 방안 (AI)']], // ⭐️ 라벨 수정
+                        head: [['문항번호', '세부 개념 유형', '난이도 (AI)', '분석 포인트 (AI)', '대응 방안 (AI)']],
                         body: analysisBody,
                         theme: 'grid',
                         styles: { font: 'NotoSansKR', fontStyle: 'normal', fontSize: 8, cellPadding: 1.5 },
@@ -590,7 +604,7 @@ export const useChartAndPDF = () => {
                 addPdfTitle(pdf, `${selectedClass} ${selectedDate} 주간테스트 리포트 (반 전체)`);
                 yPos = addPdfSectionTitle(pdf, '💡 반 전체 주요 특징', 40);
                 yPos = addFeaturesSection(pdf, data, yPos); 
-                yPos = addPdfSectionTitle(pdf, '🤖 반 전체 AI 종합 분석', yPos + 5);
+                yPos = addPdfSectionTitle(pdf, '🤖 반 전체 AI 종합 분석 (Flash)', yPos + 5);
 
                 if (chartImgData) {
                     try {
@@ -615,36 +629,50 @@ export const useChartAndPDF = () => {
                 yPos = addAiAnalysisSection(pdf, '⚠️ 공통 약점 분석', aiOverall?.common_weaknesses, yPos, 'red');
                 yPos = addAiAnalysisSection(pdf, '🚀 수업 지도 방안', aiOverall?.recommendations, yPos, 'green');
 
-                if (aiOverall?.question_analysis?.length > 0) {
-                    pdf.addPage();
-                    pdf.setFont('NotoSansKR', 'normal'); 
-                    addPdfTitle(pdf, `${selectedClass} ${selectedDate} 주간테스트 리포트 (반 전체)`);
-                    yPos = addPdfSectionTitle(pdf, '🔍 주요 오답 문항 분석 (AI 기반)', 40);
+                // ⭐️ [수정] "마스터 분석표"에서 주요 오답 문항 분석 가져오기
+                const highErrorRateQuestions = [];
+                data.answerRates.forEach((rate, i) => {
+                    if (rate <= 40) highErrorRateQuestions.push(i + 1);
+                });
+                
+                if (data.questionUnitMap?.question_analysis && highErrorRateQuestions.length > 0) {
                     
-                    const analysisBody = aiOverall.question_analysis.map(item => ([
-                        `${item.qNum}번`,
-                        cleanText(item.unit),
-                        cleanText(item.analysis_point),
-                        cleanText(item.solution)
-                    ]));
+                    const analysisItems = data.questionUnitMap.question_analysis.filter(item => 
+                        highErrorRateQuestions.includes(item.qNum)
+                    );
 
-                    autoTable(pdf, {
-                        startY: yPos,
-                        head: [['문항번호', '세부 개념 유형 (AI)', '핵심 분석', '지도 방안']],
-                        body: analysisBody,
-                        theme: 'grid',
-                        styles: { font: 'NotoSansKR', fontStyle: 'normal', fontSize: 8, cellPadding: 1.5 },
-                        headStyles: { font: 'NotoSansKR', fontStyle: 'normal', fillColor: [248, 250, 252], textColor: [55, 65, 81], fontSize: 9 }, 
-                        columnStyles: {
-                            2: { cellWidth: 55 },
-                            3: { cellWidth: 55 }
-                        },
-                        didDrawCell: (hookData) => {
-                            if (hookData.section === 'body') {
-                                hookData.cell.styles.fillColor = [254, 242, 242];
+                    if (analysisItems.length > 0) {
+                        pdf.addPage();
+                        pdf.setFont('NotoSansKR', 'normal'); 
+                        addPdfTitle(pdf, `${selectedClass} ${selectedDate} 주간테스트 리포트 (반 전체)`);
+                        yPos = addPdfSectionTitle(pdf, '🔍 주요 오답 문항 분석 (Pro Vision)', 40);
+                        
+                        const analysisBody = analysisItems.map(item => ([
+                            `${item.qNum}번`,
+                            cleanText(item.unit),
+                            cleanText(item.difficulty),
+                            cleanText(item.analysis_point),
+                            cleanText(item.solution)
+                        ]));
+
+                        autoTable(pdf, {
+                            startY: yPos,
+                            head: [['문항번호', '세부 개념 유형 (AI)', '난이도 (AI)', '핵심 분석', '지도 방안']],
+                            body: analysisBody,
+                            theme: 'grid',
+                            styles: { font: 'NotoSansKR', fontStyle: 'normal', fontSize: 8, cellPadding: 1.5 },
+                            headStyles: { font: 'NotoSansKR', fontStyle: 'normal', fillColor: [248, 250, 252], textColor: [55, 65, 81], fontSize: 9 }, 
+                            columnStyles: {
+                                3: { cellWidth: 55 },
+                                4: { cellWidth: 55 }
+                            },
+                            didDrawCell: (hookData) => {
+                                if (hookData.section === 'body') {
+                                    hookData.cell.styles.fillColor = [254, 242, 242];
+                                }
                             }
-                        }
-                    });
+                        });
+                    }
                 }
             }
             

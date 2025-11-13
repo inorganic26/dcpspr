@@ -8,7 +8,6 @@ import { db } from '../lib/firebaseConfig';
 
 /**
  * ⭐️ [기존] 이름과 전화번호로 선생님 정보를 Firestore에서 조회 (로그인)
- * (이 함수는 변경 없음)
  */
 export const loginTeacher = async (name, phone) => {
     try {
@@ -36,13 +35,11 @@ export const loginTeacher = async (name, phone) => {
 
 /**
  * ⭐️ [기존] 이름과 전화번호로 새 선생님을 등록 (회원가입)
- * (이 함수는 변경 없음)
  */
 export const registerTeacher = async (name, phone) => {
     try {
         const teachersRef = collection(db, 'teachers');
         
-        // 1. 이미 존재하는지 확인
         const q = query(teachersRef, 
             where("name", "==", name), 
             where("phone", "==", phone)
@@ -53,7 +50,6 @@ export const registerTeacher = async (name, phone) => {
             throw new Error("이미 동일한 정보로 등록된 사용자가 있습니다.");
         }
 
-        // 2. 새 선생님 문서 추가
         const newTeacherDocRef = await addDoc(teachersRef, {
             name: name,
             phone: phone,
@@ -62,12 +58,11 @@ export const registerTeacher = async (name, phone) => {
         
         console.log("새 선생님 등록:", newTeacherDocRef.id);
         
-        // 3. 새로 생성된 정보 반환
         return { id: newTeacherDocRef.id, name: name, phone: phone };
 
     } catch (error) {
         console.error("등록 중 Firestore 오류:", error);
-        throw error; // 오류를 App.jsx로 다시 던져서 UI에 표시
+        throw error; 
     }
 };
 
@@ -318,79 +313,7 @@ export const addStudentToReport = async (reportId, student) => {
 };
 
 
-// --- ⭐️ [신규] 과목 관리(Subject) 로직 ---
-
-/**
- * ⭐️ [신규] 'subjects' 컬렉션에서 모든 과목 목록을 불러옵니다.
- */
-export const loadSubjects = async () => {
-    try {
-        const subjects = [];
-        const subjectsRef = collection(db, 'subjects');
-        const querySnapshot = await getDocs(subjectsRef);
-        
-        querySnapshot.forEach(doc => {
-            subjects.push({
-                id: doc.id,
-                ...doc.data()
-            });
-        });
-        
-        console.log("과목 목록 로드 성공:", subjects.length, "개");
-        return subjects.sort((a, b) => a.label.localeCompare(b.label)); // 가나다순 정렬
-        
-    } catch (error) {
-        console.error("과목 목록 로드 중 Firestore 오류:", error);
-        throw new Error("과목 목록 로드 중 오류 발생: " + error.message);
-    }
-};
-
-/**
- * ⭐️ [신규] 'subjects' 컬렉션에 새 과목을 추가(또는 덮어쓰기)합니다.
- */
-export const saveSubject = async (subjectId, label, examplesText) => {
-    try {
-        // 1. 텍스트를 배열로 변환 (빈 줄 제거)
-        const prompt_examples = examplesText
-            .split('\n')
-            .map(line => line.trim())
-            .filter(line => line.length > 0);
-            
-        if (prompt_examples.length === 0) {
-            throw new Error("유형 예시를 1개 이상 입력해야 합니다.");
-        }
-        
-        // 2. 문서 ID가 없으면 'label'을 기반으로 자동 생성, 있으면 해당 ID 사용
-        const docId = subjectId || label.replace(/\s+/g, '_').toLowerCase();
-        const subjectRef = doc(db, 'subjects', docId);
-
-        // 3. 데이터 저장
-        await setDoc(subjectRef, {
-            label: label,
-            prompt_examples: prompt_examples
-        });
-        
-        console.log(`과목 저장 성공: ${docId}`);
-        return { id: docId, label, prompt_examples }; // 새 객체 반환
-
-    } catch (error) {
-        console.error("과목 저장 중 오류:", error);
-        throw new Error("과목 저장 중 오류 발생: " + error.message);
-    }
-};
-
-/**
- * ⭐️ [신규] 'subjects' 컬렉션에서 과목을 삭제합니다.
- */
-export const deleteSubject = async (subjectId) => {
-    if (!subjectId) throw new Error("subjectId가 필요합니다.");
-    
-    try {
-        const subjectRef = doc(db, 'subjects', subjectId);
-        await deleteDoc(subjectRef);
-        console.log(`과목 삭제 성공: ${subjectId}`);
-    } catch (error) {
-        console.error("과목 삭제 중 오류:", error);
-        throw new Error("과목 삭제 중 오류 발생: " + error.message);
-    }
-};
+// --- ⭐️ [제거] 과목 관리(Subject) 로직 ---
+// export const loadSubjects = async () => { ... };
+// export const saveSubject = async (subjectId, label, examplesText) => { ... };
+// export const deleteSubject = async (subjectId) => { ... };
