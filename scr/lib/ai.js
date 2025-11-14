@@ -5,9 +5,13 @@ import { db } from './firebaseConfig';
 
 // ⭐️ [수정] 백엔드와 동일한 리전("asia-northeast3")으로 변경
 const functions = getFunctions(db.app, "asia-northeast3"); 
-const callGeminiAPIFunction = httpsCallable(functions, 'callGeminiAPI'); // ⭐️ 2.5-flash (Text)용
-// ⭐️ [신규] 1.5-pro (Vision)용 함수 임포트
-const callGeminiProVisionFunction = httpsCallable(functions, 'callGeminiProVisionAPI');
+
+// ⭐️ [수정] 클라이언트 타임아웃을 10분(600,000ms)으로 설정
+const longTimeoutOptions = { timeout: 600000 }; 
+
+// ⭐️ [수정] 10분 타임아웃 옵션을 적용하여 함수를 정의
+const callGeminiAPIFunction = httpsCallable(functions, 'callGeminiAPI', longTimeoutOptions); // ⭐️ 2.5-flash (Text)용
+const callGeminiProVisionFunction = httpsCallable(functions, 'callGeminiProVisionAPI', longTimeoutOptions); // ⭐️ 2.5-pro (Vision)용
 
 
 // ⭐️ [수정] AI 응답 파싱 함수 (안정성 강화)
@@ -31,62 +35,49 @@ function parseAIResponse(response) {
     }
 }
 
-// ⭐️ [수정] AI 호출 함수 (자동 재시도 로직 추가)
-// (Text 모델과 Vision 모델 모두 이 재시도 로직을 사용)
-async function callAIFunction(fnToCall, payload, retries = 2) { // ⭐️ 재시도 1회 (총 2회)
+// ⭐️ [수정] AI 호출 함수 (재시도 로직 제거됨)
+async function callAIFunction(fnToCall, payload, retries = 1) { // ⭐️ retries 인자는 이제 무시됩니다.
     
     console.log(`[Cloud Function Call] Prompt length: ${payload.prompt.length} chars`);
-    
-    let lastError = null; // 마지막 오류를 저장할 변수
 
-    for (let attempt = 1; attempt <= retries; attempt++) {
-        try {
-            const result = await fnToCall(payload);
-            
-            const responseData = result.data;
-            let responseText;
+    try {
+        // 1. AI 호출 (단 1회 시도)
+        const result = await fnToCall(payload);
+        
+        // 2. 응답 데이터 파싱
+        const responseData = result.data;
+        let responseText;
 
-            if (typeof responseData === 'string') {
-                responseText = responseData;
-            } else if (responseData && typeof responseData.result === 'string') {
-                responseText = responseData.result;
-            } else {
-                console.error("Cloud Function에서 유효하지 않은 응답을 받았습니다:", responseData);
-                throw new Error("AI(Cloud Function)로부터 유효한 응답 텍스트를 받지 못했습니다.");
-            }
-            
-            const parsedResponse = parseAIResponse(responseText);
-            
-            // ⭐️ [신규] 응답 내용 검증 (유형명 분석 실패 시 재시도 유도)
-            if (parsedResponse.question_analysis && parsedResponse.question_analysis.some(u => (u.unit && u.unit.includes("분석")) || (u.analysis_point && u.analysis_point.includes("부족")))) {
-                 console.warn(`[Attempt ${attempt}] AI content failure: "유형 분석 필요" 감지. 재시도합니다...`);
-                 throw new Error("AI가 유효한 유형명을 반환하지 못했습니다.");
-            }
-
-            return parsedResponse; // ⭐️ 성공 시 루프 종료 및 반환
-
-        } catch (error) {
-            lastError = error; // ⭐️ 오류 저장
-            console.warn(`[Attempt ${attempt}/${retries}] AI 호출 실패: ${error.message}`);
-            
-            // ⭐️ API 키 유출(403) 같은 영구적 오류는 즉시 중단
-            if (error.message && (error.message.includes("403") || error.message.includes("404"))) {
-                console.error("영구적인 오류(403/404)이므로 재시도를 중단합니다.");
-                break; 
-            }
-            
-            if (attempt < retries) {
-                // ⭐️ 재시도 전 1초 대기
-                await new Promise(res => setTimeout(res, 1000));
-            }
+        if (typeof responseData === 'string') {
+            responseText = responseData;
+        } else if (responseData && typeof responseData.result === 'string') {
+            responseText = responseData.result;
+        } else {
+            console.error("Cloud Function에서 유효하지 않은 응답을 받았습니다:", responseData);
+            throw new Error("AI(Cloud Function)로부터 유효한 응답 텍스트를 받지 못했습니다.");
         }
-    }
+        
+        // 3. JSON 파싱
+        const parsedResponse = parseAIResponse(responseText);
+        
+        // ⭐️ [수정] 검증 로직 완화: 'unit'에 "분석"이 포함된 경우만 차단
+        // 'analysis_point'에 "부족"이 포함되는 것은 허용합니다.
+        if (parsedResponse.question_analysis && parsedResponse.question_analysis.some(u => (u.unit && u.unit.includes("분석")))) {
+             console.warn(`[Attempt 1] AI content failure: "유형 분석 필요" 감지. (재시도 없음)`);
+             throw new Error("AI가 유효한 유형명을 반환하지 못했습니다.");
+        }
 
-    // ⭐️ 모든 재시도 실패 시, 마지막 오류를 throw
-    console.error(`AI 분석이 모든 재시도(${retries}회)에 실패했습니다.`);
-    const errorMessage = lastError.message || "알 수 없는 오류";
-    const errorCode = lastError.code || "internal";
-    throw new Error(`AI 분석(Cloud Function) 호출 실패: ${errorCode} - ${errorMessage}`);
+        // 5. 성공 시 반환
+        return parsedResponse; 
+
+    } catch (error) {
+        // 6. 실패 시 즉시 오류 throw
+        console.error(`AI 분석(Cloud Function) 호출 실패: ${error.message}`);
+        const errorMessage = error.message || "알 수 없는 오류";
+        const errorCode = error.code || "internal";
+        // ⭐️ 재시도 없이 즉시 오류를 다시 throw
+        throw new Error(`AI 분석(Cloud Function) 호출 실패: ${errorCode} - ${errorMessage}`);
+    }
 }
 
 
@@ -164,6 +155,7 @@ export async function getQuestionUnitMapping(pdfImages, questionCount, subjectKe
     
     const examplesString = getExamples(subjectKey);
 
+    // ⭐️ [수정] 프롬프트 규칙 강화 (KaTeX 규칙 추가)
     const prompt = `
         당신은 최고의 수학 교사입니다. 첨부된 시험지 이미지를 1번부터 ${questionCount}번까지 문항별로 분석해주세요.
 
@@ -174,6 +166,17 @@ export async function getQuestionUnitMapping(pdfImages, questionCount, subjectKe
         - 난이도는 "A", "B-", "B0", "B+", "C" 5단계로 분류해주세요. (A = 가장 쉬움, B0 = 보통, C = 가장 어려움)
         - "분석 포인트"는 이 문제를 틀리는 핵심 이유입니다.
         - "오답 대응 방안"은 이 유형을 마스터하기 위한 구체적인 학습 전략입니다.
+        
+        ⭐️ [수정] AI가 모호한 답변을 하지 못하도록 규칙 추가
+        - **[규칙] '유형명(unit)'은 반드시 "유형 XX: [이름]" 형식이어야 합니다.**
+        - **[규칙] 만약 유형을 식별할 수 없다면, "유형 99: 기타 (유형 식별 불가)"로 분류하세요.**
+        - **[규칙] '유형명(unit)', '분석 포인트(analysis_point)' 필드에 "분석", "부족", "필요" 같은 모호한 단어를 절대 사용하지 마세요.**
+        - **[규칙] '분석 포인트'는 명사형 어구로 명확하게 제시하세요. (예: "이차함수 그래프 해석 오류", "판별식 적용 실수")**
+
+        ⭐️ [수정] KaTeX/LaTeX 문법 규칙 추가
+        - **[규칙] 모든 수학 수식은 반드시 KaTeX 문법(LaTeX와 유사)을 사용하여 작성하세요.**
+        - **[규칙] 인라인 수식은 $...$로 감싸고, 블록 수식은 $$...$$로 감싸세요. (JSON 문자열이므로 \\( \\) 대신 $를 사용합니다.)**
+        - **[규칙] 예시: lim (u→a) [1/(u-a)]... 는 $\\lim_{u \\to a} \\frac{1}{u-a} \\int_{a}^{u} g(t)dt = g(a)$ 로 작성해야 합니다. (JSON 내부에서는 \\를 이스케이프 처리)**
         
         [좋은 예시 - 유형명]
         ${examplesString}
@@ -199,21 +202,17 @@ export async function getQuestionUnitMapping(pdfImages, questionCount, subjectKe
         }
     `; 
     
-    // ⭐️ [수정] Pro Vision 함수 호출 (재시도 2회)
-    return callAIFunction(callGeminiProVisionFunction, { prompt, images: pdfImages }, 2); // ⭐️ 재시도 2회
+    return callAIFunction(callGeminiProVisionFunction, { prompt, images: pdfImages }, 2);
 }
 
 
 // -------------------------------------------------------------------
 // ⭐️ [수정] 2. (Flash Text) 학생 개별 "강점/약점" 요약
 // -------------------------------------------------------------------
-// ⭐️ [수정] aiAnalysis(개별분석)이 아닌 questionMasterAnalysis(마스터분석표)를 받음
 export async function getAIAnalysis(student, data, questionMasterAnalysis) {
     const incorrectAnswers = student.answers.filter(a => !a.isCorrect);
     
-    // ⭐️ [신규] Pro Vision이 분석한 '마스터 분석표'에서 오답 정보만 추출
     const incorrectAnalysisForAI = incorrectAnswers.map(ans => {
-        // ⭐️ [수정] 'questionMasterAnalysis'는 이제 .question_analysis 배열을 가짐
         const analysis = questionMasterAnalysis?.question_analysis?.find(item => item.qNum === ans.qNum);
         return {
             qNum: ans.qNum,
@@ -256,8 +255,7 @@ export async function getAIAnalysis(student, data, questionMasterAnalysis) {
         }
     `;
     
-    // ⭐️ [수정] Flash Text 함수 호출 (재시도 2회)
-    return callAIFunction(callGeminiAPIFunction, { prompt }, 2); // ⭐️ 재시도 2회
+    return callAIFunction(callGeminiAPIFunction, { prompt }, 2);
 }
 
 
@@ -305,6 +303,5 @@ export async function getOverallAIAnalysis(data) {
         }
     `;
     
-    // ⭐️ [수정] Flash Text 함수 호출 (재시도 2회)
-    return callAIFunction(callGeminiAPIFunction, { prompt }, 2); // ⭐️ 재시도 2회
+    return callAIFunction(callGeminiAPIFunction, { prompt }, 2);
 }

@@ -54,7 +54,7 @@ async function getOrCachePdfAnalysis(
         // ⭐️ 저렴한 2.5-flash (Text)로 총평 분석
         getOverallAIAnalysis(commonDataForTextAI),
         
-        // ⭐️ 비싼 1.5-pro (Vision)로 "마스터 분석표" 생성
+        // ⭐️ 비싼 2.5-pro (Vision)로 "마스터 분석표" 생성
         getQuestionUnitMapping(pdfImages, questionCount, subjectKey) 
     ]);
 

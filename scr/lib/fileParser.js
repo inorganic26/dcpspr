@@ -1,110 +1,90 @@
 // scr/lib/fileParser.js
 
-import * as pdfjsLib from 'pdfjs-dist';
-import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'; 
-import Papa from 'papaparse';
+import { getDocument } from 'pdfjs-dist';
+import 'pdfjs-dist/build/pdf.worker.min.mjs'; // ⭐️ [수정] 워커 명시적 임포트 (Vite 호환성)
 import * as XLSX from 'xlsx';
+import Papa from 'papaparse';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
-
-/**
- * PDF 파일에서 텍스트를 추출합니다.
- * (gemini-2.5-flash가 '반 전체 총평' 분석 시 사용)
- */
+// -------------------------------------------------------------------
+// 1. PDF 파싱 (Text)
+// -------------------------------------------------------------------
 export const parsePDF = (file) => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = async (e) => {
             try {
                 const data = new Uint8Array(e.target.result);
-                const pdf = await pdfjsLib.getDocument({ data }).promise; 
-                let fullText = '';
+                const pdf = await getDocument({ data }).promise;
+                let fullText = "";
+
                 for (let i = 1; i <= pdf.numPages; i++) {
                     const page = await pdf.getPage(i);
                     const textContent = await page.getTextContent();
                     const pageText = textContent.items.map(item => item.str).join(' ');
-                    fullText += pageText + '\n';
+                    fullText += `--- PAGE ${i} ---\n\n${pageText}\n\n`;
                 }
                 resolve(fullText);
             } catch (error) {
                 console.error("PDF 텍스트 파싱 실패:", error);
-                reject(new Error("PDF 텍스트를 읽는 데 실패했습니다."));
+                reject(new Error("PDF 텍스트 파싱에 실패했습니다."));
             }
         };
-        reader.onerror = () => reject(new Error("파일을 읽을 수 없습니다."));
+        reader.onerror = (e) => reject(new Error("PDF 파일 읽기 실패: " + e.target.error.message));
         reader.readAsArrayBuffer(file);
     });
 };
 
-/**
- * ⭐️ [신규] PDF 파일을 페이지별 이미지(Base64) 배열로 변환합니다.
- * (gemini-1.5-pro가 '유형/난이도' 분석 시 사용)
- */
+
+// -------------------------------------------------------------------
+// 2. PDF 파싱 (Image)
+// -------------------------------------------------------------------
+const PDF_TO_IMAGE_DPI = 200; // ⭐️ DPI (해상도)
+
 export const convertPdfToImages = (file) => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = async (e) => {
             try {
                 const data = new Uint8Array(e.target.result);
-                const pdf = await pdfjsLib.getDocument({ data }).promise;
+                const pdf = await getDocument({ data }).promise;
                 const imagePromises = [];
-                const scale = 1.5; // (해상도. 필요시 조절)
+                const scale = PDF_TO_IMAGE_DPI / 72; // 72 DPI (기본)
 
                 for (let i = 1; i <= pdf.numPages; i++) {
                     imagePromises.push(
-                        pdf.getPage(i).then(async (page) => {
+                        pdf.getPage(i).then(page => {
                             const viewport = page.getViewport({ scale });
                             const canvas = document.createElement('canvas');
                             const context = canvas.getContext('2d');
                             canvas.height = viewport.height;
                             canvas.width = viewport.width;
 
-                            await page.render({ canvasContext: context, viewport: viewport }).promise;
-                            
-                            // ⭐️ Base64 데이터 추출 (MIME 타입 헤더 제거)
-                            return canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
+                            return page.render({ canvasContext: context, viewport }).promise.then(() => {
+                                // ⭐️ Base64 JPEG로 변환 (품질 0.8)
+                                return canvas.toDataURL('image/jpeg', 0.8).split(',')[1]; 
+                            });
                         })
                     );
                 }
                 
-                const images = await Promise.all(imagePromises);
-                console.log(`PDF를 ${images.length}장의 이미지로 변환 완료.`);
-                resolve(images); // ⭐️ [img1_base64, img2_base64, ...]
+                const base64Images = await Promise.all(imagePromises);
+                console.log(`PDF를 ${base64Images.length}장의 이미지로 변환 완료.`);
+                resolve(base64Images);
 
             } catch (error) {
                 console.error("PDF 이미지 변환 실패:", error);
                 reject(new Error("PDF를 이미지로 변환하는 데 실패했습니다."));
             }
         };
-        reader.onerror = () => reject(new Error("파일을 읽을 수 없습니다."));
+        reader.onerror = (e) => reject(new Error("PDF 파일 읽기 실패: " + e.target.error.message));
         reader.readAsArrayBuffer(file);
     });
 };
 
 
-/**
- * CSV 파일에서 데이터를 파싱합니다. (기존 함수 - 변경 없음)
- */
-export const parseCSV = (file) => {
-    return new Promise((resolve, reject) => {
-        Papa.parse(file, {
-            header: true,
-            skipEmptyLines: true,
-            complete: (results) => {
-                if (results.errors.length) {
-                    reject(new Error("CSV 파싱 오류: " + results.errors[0].message));
-                } else {
-                    resolve(results.data);
-                }
-            },
-            error: (error) => reject(new Error("CSV 파일 읽기 실패: " + error.message))
-        });
-    });
-};
-
-/**
- * XLSX (엑셀) 파일에서 데이터를 파싱합니다. (기존 함수 - 변경 없음)
- */
+// -------------------------------------------------------------------
+// 3. 엑셀/CSV 파싱
+// -------------------------------------------------------------------
 export const parseXLSX = (file) => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -112,157 +92,180 @@ export const parseXLSX = (file) => {
             try {
                 const data = new Uint8Array(e.target.result);
                 const workbook = XLSX.read(data, { type: 'array' });
-                const sheetName = workbook.SheetNames[0];
-                const worksheet = workbook.Sheets[sheetName];
-                const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-                
-                if (jsonData.length < 2) {
-                    reject(new Error("엑셀 시트가 비어있거나 헤더만 존재합니다."));
-                    return;
-                }
-                
-                const headers = jsonData[0];
-                const dataRows = jsonData.slice(1);
-                
-                const formattedData = dataRows.map(row => {
-                    const rowData = {};
-                    headers.forEach((header, index) => {
-                        rowData[header] = row[index];
-                    });
-                    return rowData;
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+                const json = XLSX.utils.sheet_to_json(worksheet, { 
+                    header: 1, // ⭐️ 헤더를 배열로 취급
+                    defval: ""  // ⭐️ 빈 셀은 빈 문자열로
                 });
                 
-                resolve(formattedData);
+                // ⭐️ 첫 번째 행(헤더)과 나머지 행(데이터)을 분리
+                const header = json[0];
+                const rows = json.slice(1);
+
+                // ⭐️ 헤더를 키로 하는 JSON 객체 배열로 재조립
+                const formattedJson = rows.map(row => {
+                    const obj = {};
+                    header.forEach((key, index) => {
+                        obj[key] = row[index];
+                    });
+                    return obj;
+                });
+                
+                resolve(formattedJson);
             } catch (error) {
-                console.error("XLSX 파싱 실패:", error);
-                reject(new Error("XLSX 파일 파싱 중 오류가 발생했습니다."));
+                reject(new Error("XLSX 파일 파싱 실패: " + error.message));
             }
         };
-        reader.onerror = () => reject(new Error("파일을 읽을 수 없습니다."));
+        reader.onerror = (e) => reject(new Error("XLSX 파일 읽기 실패: " + e.target.error.message));
         reader.readAsArrayBuffer(file);
     });
 };
 
-
-/**
- * 파일 이름에서 반 이름을 추출합니다.
- */
-const getClassNameFromFile = (fileName) => {
-    const baseName = fileName.replace(/\.(pdf|csv|xlsx)$/i, '');
-    // ⭐️ [수정] '정오표' 키워드도 제거하도록 추가
-    return baseName.replace(/시험지|성적표|성적|정오표/g, '').trim(); 
-};
-
-/**
- * 파일들을 반 이름 기준으로 짝짓습니다. (기존 함수 - 변경 없음)
- */
-export const pairFiles = (files) => {
-    const pairs = {};
-    files.forEach(file => {
-        const className = getClassNameFromFile(file.name);
-        if (!pairs[className]) {
-            pairs[className] = {};
-        }
-        if (file.name.endsWith('.pdf')) {
-            pairs[className].pdf = file;
-        } else if (file.name.endsWith('.csv') || file.name.endsWith('.xlsx')) {
-            pairs[className].spreadsheet = file;
-        }
+export const parseCSV = (file) => {
+    return new Promise((resolve, reject) => {
+        Papa.parse(file, {
+            header: true,
+            skipEmptyLines: true,
+            complete: (results) => resolve(results.data),
+            error: (error) => reject(new Error("CSV 파일 파싱 실패: " + error.message))
+        });
     });
-    
-    // PDF와 성적표가 모두 있는 쌍만 반환
-    return Object.keys(pairs).reduce((acc, key) => {
-        if (pairs[key].pdf && pairs[key].spreadsheet) {
-            acc[key] = pairs[key];
-        }
-        return acc;
-    }, {});
 };
 
 
-/**
- * ⭐️ [수정] 파싱된 학생 데이터를 표준 형식으로 처리합니다.
- */
-export const processStudentData = (data) => {
-    if (!data || data.length === 0) {
-        throw new Error("학생 데이터가 비어있습니다.");
-    }
-    
-    const headers = Object.keys(data[0]);
-    
-    // ⭐️ [수정] '학생' 키워드 추가 (CSV 파일 호환)
-    const nameHeader = headers.find(h => ['이름', 'name', 'student', '학생'].includes(h.toLowerCase()));
-    // ⭐️ [수정] '점수\문제' 키워드 추가 (CSV 파일 호환)
-    const scoreHeader = headers.find(h => ['총점', '점수', 'score', 'total', '점수\\문제'].includes(h.toLowerCase()));
-    
-    if (!nameHeader || !scoreHeader) {
-        throw new Error("엑셀/입력 데이터에서 '이름' 또는 '총점' 열을 찾을 수 없습니다.");
-    }
-
-    const questionHeaders = headers.filter(h => !isNaN(parseInt(h, 10)));
-    const questionCount = questionHeaders.length;
-    
-    if (questionCount === 0) {
-        throw new Error("엑셀/입력 데이터에서 '1', '2', '3'과 같은 문항 번호 열을 찾을 수 없습니다.");
-    }
-    
+// -------------------------------------------------------------------
+// 4. 학생 데이터 처리 및 통계 계산
+// -------------------------------------------------------------------
+export const processStudentData = (rawData) => {
     const students = [];
     let totalScore = 0;
-    const questionCorrectCounts = Array(questionCount).fill(0);
+    let questionCount = 0;
+    let answerRates = [];
 
-    data.forEach((row, rowIndex) => {
-        const name = row[nameHeader];
-        // ⭐️ [수정] '점수' 열에 "65점"처럼 텍스트가 포함된 경우 숫자만 추출
-        const score = parseFloat(String(row[scoreHeader]).replace(/[^0-9.]/g, ''));
+    if (!rawData || rawData.length === 0) {
+        throw new Error("학생 데이터가 비어있습니다. (rawData)");
+    }
+
+    // 1. 문항 수(questionCount) 결정 (첫 번째 학생 기준)
+    const firstRow = rawData[0];
+    const keys = Object.keys(firstRow);
+    const questionKeys = keys.filter(k => !isNaN(parseInt(k, 10)) && parseInt(k, 10) > 0);
+    questionCount = questionKeys.length;
+
+    if (questionCount === 0) {
+        throw new Error("파싱된 데이터에서 유효한 문항(숫자 헤더)을 찾을 수 없습니다.");
+    }
+    
+    answerRates = Array(questionCount).fill(0); // ⭐️ 정답률 배열 초기화
+
+    // 2. 학생 데이터 순회
+    rawData.forEach((row, index) => {
         
-        if (!name || isNaN(score)) return; // ⭐️ 이름이 없거나 점수가 NaN이면 건너뛰기
+        const studentName = (row["이름"] || row["학생"] || row["학생명"] || "").trim();
 
-        const answers = [];
+        // ⭐️ [수정 1] '/'가 포함된 이름, 통계 이름 필터링 (이전 오류 수정)
+        if (!studentName || 
+            studentName.includes('/') || 
+            studentName === "평균점수" || 
+            studentName.includes("정답률") || 
+            studentName.includes("반평균")
+        ) {
+            return; // 이 행은 학생이 아니므로 건너뜁니다.
+        }
+        
+        // ⭐️ [수정 2] CSV 파일의 "점수\문제" 헤더를 인식하도록 추가
+        const scoreValue = row["총점"] || row["점수"] || row["점수\\문제"];
+
+        // ⭐️ [수정 3] '점' 글자를 제거하고, 값이 없으면 "0"을 기본값으로 하여 NaN 방지
+        const scoreString = (scoreValue || "0").toString().replace('점', '');
+        const score = parseFloat(scoreString);
+        
+        if (isNaN(score)) {
+            return; // (안전장치) 점수 파싱이 실패하면 건너뜁니다.
+        }
+
+        const student = {
+            name: studentName,
+            score: score,
+            submitted: true, 
+            answers: [],
+            correctCount: 0,
+            aiAnalysis: null,
+            // ⭐️ [수정 4] 'undefined' 대신 원본 값(예: "65점") 또는 'null'을 저장
+            "총점": scoreValue || null
+        };
+        
         let correctCount = 0;
         
-        questionHeaders.forEach((qHeader, index) => {
-            const answerValue = row[qHeader]; 
-            const isCorrect = answerValue === 'O' || answerValue === 1 || String(answerValue).toLowerCase() === 'o';
+        // O, X 문항 처리
+        for (let i = 1; i <= questionCount; i++) {
+            const answer = (row[i] || 'X').toString().toUpperCase().trim(); // ⭐️ 기본값 'X'
+            const isCorrect = (answer === 'O' || answer === 'TRUE');
             
-            answers.push({
-                qNum: parseInt(qHeader, 10),
-                answer: String(answerValue),
-                isCorrect: isCorrect
-            });
-
+            student.answers.push({ qNum: i, answer: isCorrect ? 'O' : 'X', isCorrect });
+            
             if (isCorrect) {
                 correctCount++;
-                questionCorrectCounts[index]++;
+                answerRates[i - 1]++; // ⭐️ 정답자 수 누적
             }
-        });
-
-        students.push({
-            // ⭐️ [수정] 'id' 필드 제거 (DB에서 'name'을 ID로 사용)
-            name: name,
-            score: score,
-            answers: answers,
-            correctCount: correctCount,
-            submitted: true, 
-            aiAnalysis: null 
-        });
+        }
         
-        totalScore += score;
+        student.correctCount = correctCount;
+        students.push(student);
+        totalScore += student.score;
     });
 
     if (students.length === 0) {
-        throw new Error("유효한 학생 데이터를 찾을 수 없습니다. '이름'과 '총점' 열을 확인하세요.");
+        throw new Error("유효한 학생 데이터를 찾을 수 없습니다. (필터링 후 0명)");
     }
 
-    const classAverage = (totalScore / students.length).toFixed(1);
-    const answerRates = questionCorrectCounts.map(count => 
-        parseFloat(((count / students.length) * 100).toFixed(1))
-    );
+    // 3. 통계 계산
+    const classAverage = totalScore / students.length;
+    const finalAnswerRates = answerRates.map(count => (count / students.length) * 100);
 
     return {
         students: students,
         studentCount: students.length,
-        classAverage: classAverage,
+        classAverage: parseFloat(classAverage.toFixed(1)),
         questionCount: questionCount,
-        answerRates: answerRates
+        answerRates: finalAnswerRates.map(rate => parseFloat(rate.toFixed(1)))
     };
+};
+
+
+// -------------------------------------------------------------------
+// 5. 파일 쌍 매칭
+// -------------------------------------------------------------------
+const getBaseName = (fileName) => {
+    // .pdf, .csv, .xlsx 등의 확장자 제거
+    let base = fileName.split('.').slice(0, -1).join('.');
+    // '정오표' 같은 특정 단어 제거 (필요시)
+    base = base.replace(/_정오표| 정오표|-정오표/gi, ''); 
+    return base;
+};
+
+export const pairFiles = (files) => {
+    const fileMap = {};
+    const paired = {};
+
+    files.forEach(file => {
+        const baseName = getBaseName(file.name);
+        if (!fileMap[baseName]) {
+            fileMap[baseName] = {};
+        }
+        if (file.name.toLowerCase().endsWith('.pdf')) {
+            fileMap[baseName].pdf = file;
+        } else if (file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.xlsx')) {
+            fileMap[baseName].spreadsheet = file;
+        }
+    });
+
+    for (const baseName in fileMap) {
+        if (fileMap[baseName].pdf && fileMap[baseName].spreadsheet) {
+            // ⭐️ 반 이름(Key)으로 baseName을 사용
+            paired[baseName] = fileMap[baseName]; 
+        }
+    }
+    return paired;
 };

@@ -24,6 +24,11 @@ import { auth } from './lib/firebaseConfig';
 // ⭐️ [수정] 'Settings' 아이콘 제거
 import { Home, ArrowLeft, UploadCloud, FileText, Loader, TriangleAlert, Save, PlusCircle, CalendarDays, LogOut, User, Trash2 } from 'lucide-react';
 
+// ⭐️ [수정] KaTeX 라이브러리 및 CSS 임포트
+import 'katex/dist/katex.min.css';
+import renderMathInElement from 'katex/dist/contrib/auto-render';
+
+
 // ... (Page1_Upload 컴포넌트 대폭 수정) ...
 const Page1_Upload = ({ handleFileChange, handleFileProcess, fileInputRef, selectedFiles, handleFileDrop }) => { 
     const { 
@@ -528,9 +533,36 @@ const Page4_ReportSelect = ({ handleDeleteStudent, selectedClass, selectedDate, 
 
 
 // ... (Page5_ReportDisplay, LoginPage 컴포넌트는 기존과 동일) ...
+
+// ⭐️ [수정] Page5_ReportDisplay 컴포넌트 수정 (KaTeX 적용)
 const Page5_ReportDisplay = () => { 
     const { reportHTML } = useReportContext();
-    const reportContentRef = usePagination(); 
+    const reportContentRef = usePagination(); // 기존 ref 사용
+
+    // ⭐️ [수정] reportHTML이 변경될 때마다 KaTeX 렌더링 실행
+    useEffect(() => {
+        if (reportContentRef.current) {
+            try {
+                // KaTeX의 auto-render 기능 실행
+                renderMathInElement(reportContentRef.current, {
+                    delimiters: [
+                        {left: "$$", right: "$$", display: true},
+                        {left: "\\[", right: "\\]", display: true},
+                        {left: "$", right: "$", display: false},
+                        {left: "\\(", right: "\\)", display: false}
+                    ],
+                    // 오류 발생 시 콘솔에 로그
+                    strict: (errorCode, errorMsg, token) => {
+                        console.warn(`KaTeX parsing error: ${errorCode} - ${errorMsg}`, token);
+                        return 'warn';
+                    }
+                });
+            } catch (error) {
+                console.error("KaTeX 렌더링 중 오류 발생:", error);
+            }
+        }
+    }, [reportHTML, reportContentRef]); // reportHTML이 렌더링 된 후 실행
+
     return (
         <div id="reportContainer" ref={reportContentRef} >
             <div id="reportContent" className="space-y-6" dangerouslySetInnerHTML={{ __html: reportHTML }} />
@@ -542,6 +574,7 @@ const Page5_ReportDisplay = () => {
         </div>
     );
 };
+
 const LoginPage = ({ onLogin, onRegister, loginError, isLoggingIn, setLoginError }) => {
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
