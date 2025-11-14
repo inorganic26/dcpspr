@@ -6,7 +6,7 @@ const fetch = require("node-fetch");
 
 const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
 
-const REGION = "us-central1";
+const REGION = "asia-northeast3";
 
 // ⭐️ 1. Text 모델 (사용자님 요청대로 'gemini-2.5-flash' 사용)
 const TEXT_MODEL = "gemini-2.5-flash";
@@ -67,12 +67,12 @@ exports.callGeminiAPI = onCall({
 });
 
 
-// ⭐️ 2. Vision 모델 ('gemini-1.5-pro' 사용)
-const VISION_MODEL = "gemini-1.5-pro";
+// ⭐️ 2. Vision 모델 ('gemini-2.5-pro' 사용)
+const VISION_MODEL = "gemini-2.5-pro";
 exports.callGeminiProVisionAPI = onCall({
   region: REGION,
   secrets: [GEMINI_API_KEY],
-  timeoutSeconds: 300, 
+  timeoutSeconds: 540, 
 }, async (request) => {
     
   const { prompt, images } = request.data; 

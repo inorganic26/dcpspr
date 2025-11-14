@@ -3,8 +3,8 @@
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from './firebaseConfig'; 
 
-// ⭐️ [수정] 백엔드와 동일한 리전("us-central1")으로 변경
-const functions = getFunctions(db.app, "us-central1"); 
+// ⭐️ [수정] 백엔드와 동일한 리전("asia-northeast3")으로 변경
+const functions = getFunctions(db.app, "asia-northeast3"); 
 const callGeminiAPIFunction = httpsCallable(functions, 'callGeminiAPI'); // ⭐️ 2.5-flash (Text)용
 // ⭐️ [신규] 1.5-pro (Vision)용 함수 임포트
 const callGeminiProVisionFunction = httpsCallable(functions, 'callGeminiProVisionAPI');
