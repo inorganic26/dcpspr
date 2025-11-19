@@ -67,8 +67,8 @@ exports.callGeminiAPI = onCall({
 });
 
 
-// ⭐️ 2. Vision 모델 ('gemini-2.5-pro' 사용)
-const VISION_MODEL = "gemini-2.5-pro";
+// ⭐️ 2. Vision 모델 ('gemini-2.5-flash' 사용)
+const VISION_MODEL = "gemini-2.5-flash"; // 👈 [수정됨]
 exports.callGeminiProVisionAPI = onCall({
   region: REGION,
   secrets: [GEMINI_API_KEY],

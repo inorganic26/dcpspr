@@ -35,48 +35,72 @@ function parseAIResponse(response) {
     }
 }
 
-// ⭐️ [수정] AI 호출 함수 (재시도 로직 제거됨)
-async function callAIFunction(fnToCall, payload, retries = 1) { // ⭐️ retries 인자는 이제 무시됩니다.
+// ⭐️ [수정] AI 호출 함수 (재시도 로직 복구 및 강화)
+async function callAIFunction(fnToCall, payload, retries = 3) { // ⭐️ 기본 재시도 횟수 3회로 설정
     
     console.log(`[Cloud Function Call] Prompt length: ${payload.prompt.length} chars`);
 
-    try {
-        // 1. AI 호출 (단 1회 시도)
-        const result = await fnToCall(payload);
-        
-        // 2. 응답 데이터 파싱
-        const responseData = result.data;
-        let responseText;
+    // 재시도 간 딜레이 함수 (ms)
+    const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-        if (typeof responseData === 'string') {
-            responseText = responseData;
-        } else if (responseData && typeof responseData.result === 'string') {
-            responseText = responseData.result;
-        } else {
-            console.error("Cloud Function에서 유효하지 않은 응답을 받았습니다:", responseData);
-            throw new Error("AI(Cloud Function)로부터 유효한 응답 텍스트를 받지 못했습니다.");
+    for (let attempt = 1; attempt <= retries + 1; attempt++) {
+        try {
+            // 1. AI 호출
+            const result = await fnToCall(payload);
+            
+            // 2. 응답 데이터 파싱
+            const responseData = result.data;
+            let responseText;
+
+            if (typeof responseData === 'string') {
+                responseText = responseData;
+            } else if (responseData && typeof responseData.result === 'string') {
+                responseText = responseData.result;
+            } else {
+                // 응답이 이상하면 에러 처리 (이 경우엔 재시도해도 소용없을 수 있으므로 바로 throw)
+                console.error("Cloud Function에서 유효하지 않은 응답을 받았습니다:", responseData);
+                throw new Error("AI(Cloud Function)로부터 유효한 응답 텍스트를 받지 못했습니다.");
+            }
+            
+            // 3. JSON 파싱
+            const parsedResponse = parseAIResponse(responseText);
+            
+            // 4. 내용 검증 ('분석 필요' 같은 모호한 답변 걸러내기)
+            if (parsedResponse.question_analysis && parsedResponse.question_analysis.some(u => (u.unit && u.unit.includes("분석")))) {
+                 console.warn(`[Attempt ${attempt}] AI content failure: "유형 분석 필요" 감지.`);
+                 // 마지막 시도가 아니면 에러를 던져서 재시도 유도
+                 if (attempt <= retries) {
+                     throw new Error("AI가 유효한 유형명을 반환하지 못했습니다. (재시도 필요)");
+                 }
+            }
+
+            // 5. 성공 시 반환
+            return parsedResponse; 
+
+        } catch (error) {
+            const errorMessage = error.message || "알 수 없는 오류";
+            const isOverloaded = errorMessage.includes("503") || errorMessage.includes("overloaded") || errorMessage.includes("internal");
+            
+            console.warn(`[Attempt ${attempt}/${retries + 1}] AI 호출 실패: ${errorMessage}`);
+
+            // 6. 재시도 결정 로직
+            // 마지막 시도이거나, 재시도해도 소용없는 에러(프롬프트 오류 등)가 아니면 종료
+            if (attempt > retries) {
+                console.error(`모든 재시도(${retries}회) 실패.`);
+                throw new Error(`AI 분석 최종 실패: ${errorMessage}`);
+            }
+            
+            // 503(과부하) 오류이거나 "AI 결과 내용 문제"라면 잠시 대기 후 재시도
+            if (isOverloaded || errorMessage.includes("재시도 필요")) {
+                const delayTime = attempt * 2000; // 2초, 4초, 6초... 점진적으로 대기
+                console.log(`⚠️ 서버 과부하 또는 분석 오류 감지. ${delayTime / 1000}초 후 재시도합니다...`);
+                await wait(delayTime);
+                continue; // 다음 루프로 이동 (재시도)
+            }
+
+            // 그 외의 오류(예: 인증 오류, 잘못된 인자)는 즉시 중단
+            throw error; 
         }
-        
-        // 3. JSON 파싱
-        const parsedResponse = parseAIResponse(responseText);
-        
-        // ⭐️ [수정] 검증 로직 완화: 'unit'에 "분석"이 포함된 경우만 차단
-        // 'analysis_point'에 "부족"이 포함되는 것은 허용합니다.
-        if (parsedResponse.question_analysis && parsedResponse.question_analysis.some(u => (u.unit && u.unit.includes("분석")))) {
-             console.warn(`[Attempt 1] AI content failure: "유형 분석 필요" 감지. (재시도 없음)`);
-             throw new Error("AI가 유효한 유형명을 반환하지 못했습니다.");
-        }
-
-        // 5. 성공 시 반환
-        return parsedResponse; 
-
-    } catch (error) {
-        // 6. 실패 시 즉시 오류 throw
-        console.error(`AI 분석(Cloud Function) 호출 실패: ${error.message}`);
-        const errorMessage = error.message || "알 수 없는 오류";
-        const errorCode = error.code || "internal";
-        // ⭐️ 재시도 없이 즉시 오류를 다시 throw
-        throw new Error(`AI 분석(Cloud Function) 호출 실패: ${errorCode} - ${errorMessage}`);
     }
 }
 
@@ -149,70 +173,70 @@ function getExamples(subjectKey) {
 
 
 // -------------------------------------------------------------------
-// ⭐️ [수정] 1. (Pro Vision) 유형/난이도/분석포인트/대응방안 "마스터 분석"
+// ⭐️ [수정] 1. (Pro Vision) 유형/난이도/접근포인트/추가학습 "마스터 분석"
 // -------------------------------------------------------------------
 export async function getQuestionUnitMapping(pdfImages, questionCount, subjectKey) {
     
     const examplesString = getExamples(subjectKey);
 
-    // ⭐️ [수정] 프롬프트 규칙 강화 (사용자님 요청 반영)
+    // ⭐️ [수정] 프롬프트 규칙 강화: '분석 포인트'를 '접근 아이디어'로 변경
     const prompt = `
         당신은 최고의 수학 교사입니다. 첨부된 시험지 이미지를 1번부터 ${questionCount}번까지 문항별로 분석해주세요.
 
         **분석 요청:**
-        각 문항에 대해, **(1)'유형명(unit)'**, **(2)'난이도(difficulty)'**, **(3)'핵심 실수 키워드(analysis_point)'**, **(4)'핵심 학습 키워드(solution)'**를 JSON 형식으로 반환해주세요.
+        각 문항에 대해, **(1)'유형명(unit)'**, **(2)'난이도(difficulty)'**, **(3)'핵심 접근 포인트(analysis_point)'**, **(4)'추가 학습 키워드(solution)'**를 JSON 형식으로 반환해주세요.
 
-        [매우 중요]
-        - 난이도는 "A", "B-", "B0", "B+", "C" 5단계로 분류해주세요. (A = 가장 쉬움, B0 = 보통, C = 가장 어려움)
-        - "분석 포인트"는 이 문제를 틀리는 **핵심 '실수 키워드'**입니다.
-        - "오답 대응 방안"은 이 유형을 마스터하기 위한 **핵심 '학습 키워드'**입니다.
+        [매우 중요 - 작성 규칙]
+        1. **난이도**: "A", "B-", "B0", "B+", "C" 5단계 (A=쉬움, C=어려움)
+        2. **유형명(unit)**: 
+           - 반드시 "유형 XX: [이름]" 형식을 지키세요. (식별 불가시 "유형 99: 기타")
+           - "분석", "부족" 같은 모호한 단어는 쓰지 마세요.
         
-        ⭐️ [수정] AI가 모호한 답변을 하지 못하도록 규칙 추가
-        - **[규칙] '유형명(unit)'은 반드시 "유형 XX: [이름]" 형식이어야 합니다.**
-        - **[규칙] 만약 유형을 식별할 수 없다면, "유형 99: 기타 (유형 식별 불가)"로 분류하세요.**
-        - **[규칙] '유형명(unit)' 필드에 "분석", "부족", "필요" 같은 모호한 단어를 절대 사용하지 마세요.**
-        - **[규칙] '분석 포인트'와 '오답 대응 방안'은 반드시 3~5개 단어 이내의 '핵심 키워드' 또는 '매우 간결한 어구'로만 작성하세요.**
-        - **[규칙] 절대 긴 문장으로 서술하지 마세요.**
+        3. ⭐️ **핵심 접근 포인트(analysis_point)** [변경됨]: 
+           - 이 문제는 학생들이 어디서 실수를 하는지가 아니라, **"문제를 풀기 위해 가장 먼저 떠올려야 할 핵심 아이디어"**나 **"접근 방법"**을 적어주세요.
+           - **규칙**: 명사형 나열이 아닌, **"~를 이용하여 ~구하기", "~조건을 ~로 변형하기"** 처럼 **구체적인 행동이 담긴 간결한 문장**으로 작성하세요. (공백 포함 30자 이내)
+           
+        4. **추가 학습 키워드(solution)**: 
+           - 이 문제를 마스터하기 위해 공부해야 할 개념 키워드를 3~5단어 이내로 적어주세요.
 
-        ⭐️ [신규] 사용자 요청 수식 규칙 (Unicode/HTML)
-        - **[규칙] 모든 수학 수식은 유니코드/HTML 엔티티로 완벽하게 변환해야 합니다.**
-        - **[규칙] 예: 'lim'은 '&lim;' 또는 'U+2260'으로, '∫'은 '&int;' 또는 'U+222B'으로 변환하세요.**
-        - **[규칙] KaTeX/LaTeX 형식($...$)을 절대 사용하지 마세요.**
-        
+        5. **수식 규칙**: 모든 수식은 KaTeX 형식 ($...$)을 사용하세요.
+
         [좋은 예시 - 유형명]
         ${examplesString}
 
-        [좋은 예시 - 분석 포인트]
-        - "이차함수 그래프 해석 오류"
-        - "판별식 적용 실수"
-        - "개념 이해 부족"
+        [좋은 예시 - 핵심 접근 포인트 (접근 방법)]
+        - "판별식 $D \\ge 0$을 이용하여 미지수 범위 구하기"
+        - "이차함수 그래프를 그려 축의 위치 확인하기"
+        - "주어진 식을 $t$로 치환하여 범위 재설정하기"
+        - "보조선을 그어 닮음비 활용하기"
 
-        [좋은 예시 - 오답 대응 방안]
-        - "교과서 정의 복습"
-        - "유사 문제 반복 풀이"
-        - "그래프 그리기 연습"
+        [좋은 예시 - 추가 학습 키워드]
+        - "이차부등식의 해"
+        - "삼각함수의 합성"
+        - "도함수의 활용"
 
         **결과는 반드시 다음 JSON 형식으로만 반환해주세요. 설명이나 다른 텍스트는 포함하지 마세요:**
         {
             "question_analysis": [
                 { 
                     "qNum": 1, 
-                    "unit": "유형 01: ...", 
+                    "unit": "유형 01: 지수법칙", 
                     "difficulty": "A",
-                    "analysis_point": "단순 계산 실수",
-                    "solution": "기본 예제 반복 풀이"
+                    "analysis_point": "밑을 통일하여 지수끼리 비교하기",
+                    "solution": "지수법칙과 로그의 정의"
                 },
                 { 
                     "qNum": ${questionCount}, 
                     "unit": "...", 
                     "difficulty": "C",
-                    "analysis_point": "복합 개념 조건 해석 실패",
-                    "solution": "조건 분해 및 그래프 연습"
+                    "analysis_point": "조건을 만족하는 그래프 개형 추론하기",
+                    "solution": "함수의 연속과 미분가능성"
                 }
             ]
         }
     `; 
     
+    // ⭐️ 재시도 로직이 적용된 callAIFunction 호출 (retries: 2)
     return callAIFunction(callGeminiProVisionFunction, { prompt, images: pdfImages }, 2);
 }
 
