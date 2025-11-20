@@ -32,9 +32,10 @@ export const ReportProvider = ({ children }) => {
     const [activeChart, setActiveChart] = useState(null);
 
     const [selectedFiles, setSelectedFiles] = useState([]);
-    
-    // ⭐️ [제거] 과목 목록 상태
-    // const [subjects, setSubjects] = useState([]);
+
+    // ⭐️ [신규] 누적 분석을 위한 상태 추가
+    const [cumulativeData, setCumulativeData] = useState(null); 
+    const [selectedDates, setSelectedDates] = useState([]); // 다중 날짜 선택용
 
     const showPage = (pageName) => {
         setErrorMessage(''); 
@@ -48,6 +49,10 @@ export const ReportProvider = ({ children }) => {
         setSelectedStudent(null);
         setCurrentReportData(null);
         setReportHTML('');
+        
+        // ⭐️ 누적 분석 상태 초기화
+        setCumulativeData(null);
+        setSelectedDates([]);
     };
 
     const value = {
@@ -74,9 +79,11 @@ export const ReportProvider = ({ children }) => {
         
         activeChart, setActiveChart,
 
-        selectedFiles, setSelectedFiles
-        
-        // ⭐️ [제거] Context에서 'subjects' 제공 제거
+        selectedFiles, setSelectedFiles,
+
+        // ⭐️ [신규] 누적 분석 상태 제공
+        cumulativeData, setCumulativeData,
+        selectedDates, setSelectedDates
     };
 
     return (
